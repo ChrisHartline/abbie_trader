@@ -29,6 +29,9 @@ def run_ekf(price_series, dt=1.0):
         values = np.array(price_series)
         index = pd.RangeIndex(len(values))
 
+    # Ensure values is a 1D array
+    values = np.asarray(values).flatten()
+
     if len(values) == 0:
         raise ValueError("Cannot run EKF on empty price series")
 
@@ -36,7 +39,7 @@ def run_ekf(price_series, dt=1.0):
     x = np.zeros((n, 3))      # [level, velocity, log_var]
     P = np.zeros((n, 3, 3))
 
-    x[0] = [values[0], 0.0, -5.0]
+    x[0] = np.array([float(values[0]), 0.0, -5.0])
     P[0] = np.eye(3) * 1.0
 
     Q = np.diag([0.01, 1e-4, 1e-4])
@@ -286,8 +289,14 @@ def main():
         print(f"❌ Error downloading data: {e}")
         return
 
-    # Prepare data
-    close = btc['Close'].copy()
+    # Prepare data - handle both single and multi-level column indices
+    if isinstance(btc.columns, pd.MultiIndex):
+        close = btc['Close']['BTC-USD'].copy()
+    else:
+        close = btc['Close'].copy()
+
+    # Ensure it's a proper Series with numeric values
+    close = pd.Series(close.values.flatten(), index=btc.index)
 
     # Run EKF
     print("\n🔧 Running Extended Kalman Filter...")
