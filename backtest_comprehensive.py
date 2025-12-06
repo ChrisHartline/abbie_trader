@@ -149,17 +149,25 @@ print("Downloading BTC historical data...")
 START_DATE = "2022-01-01"
 END_DATE = datetime.now().strftime("%Y-%m-%d")
 
-btc = yf.download("BTC-USD", start=START_DATE, end=END_DATE, interval="1d", progress=False)
+btc_raw = yf.download("BTC-USD", start=START_DATE, end=END_DATE, interval="1d", progress=False)
 
-# Handle multi-level columns
-if isinstance(btc.columns, pd.MultiIndex):
-    btc = btc['Close']
-    if isinstance(btc, pd.DataFrame):
-        btc = btc.iloc[:, 0]
+# Handle multi-level columns from yfinance
+if isinstance(btc_raw.columns, pd.MultiIndex):
+    close = btc_raw['Close']['BTC-USD'].copy()
+else:
+    close = btc_raw['Close'].copy()
 
-btc = pd.DataFrame(btc, columns=['close'])
+# Ensure it's a proper Series with numeric values
+close = pd.Series(close.values.flatten(), index=btc_raw.index)
+
+# Create DataFrame
+btc = pd.DataFrame({'close': close})
 btc['return'] = np.log(btc['close'] / btc['close'].shift(1))
 btc = btc.dropna()
+
+if len(btc) == 0:
+    print("✗ Error: No data downloaded. Check internet connection and try again.")
+    exit(1)
 
 print(f"✓ Downloaded {len(btc)} days ({btc.index[0]:%Y-%m-%d} to {btc.index[-1]:%Y-%m-%d})\n")
 
