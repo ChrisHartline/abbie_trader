@@ -19,7 +19,11 @@ import requests
 from datetime import datetime, timedelta
 import warnings
 import os
+from dotenv import load_dotenv
 warnings.filterwarnings('ignore')
+
+# Load environment variables from .env file
+load_dotenv()
 
 # ============================
 # Configuration (from main.py)
@@ -217,25 +221,27 @@ print("Downloading BTC historical data...")
 START_DATE = "2022-01-01"
 
 # Get Alpha Vantage API key from environment variable or user
-ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
+ALPHAVANTAGE_API_KEY = os.getenv('ALPHAVANTAGE_API_KEY')
 
-if not ALPHA_VANTAGE_API_KEY:
+if not ALPHAVANTAGE_API_KEY:
     print("\n" + "="*80)
     print("ALPHA VANTAGE API KEY REQUIRED")
     print("="*80)
     print("\nSet your API key using one of these methods:")
-    print("\n1. Environment variable:")
-    print("   export ALPHA_VANTAGE_API_KEY='your_key_here'")
+    print("\n1. Add to .env file:")
+    print("   ALPHAVANTAGE_API_KEY=your_key_here")
     print("\n2. Or enter it now:")
-    ALPHA_VANTAGE_API_KEY = input("Enter your Alpha Vantage API key: ").strip()
+    ALPHAVANTAGE_API_KEY = input("Enter your Alpha Vantage API key: ").strip()
 
-    if not ALPHA_VANTAGE_API_KEY:
+    if not ALPHAVANTAGE_API_KEY:
         print("\n✗ Error: API key required. Get one free at https://www.alphavantage.co/support/#api-key")
         exit(1)
 
+print(f"✓ API key loaded from .env file\n")
+
 # Download BTC data from Alpha Vantage
 try:
-    close = download_btc_alphavantage(ALPHA_VANTAGE_API_KEY, START_DATE)
+    close = download_btc_alphavantage(ALPHAVANTAGE_API_KEY, START_DATE)
 except Exception as e:
     print(f"\n✗ Failed to download data: {e}")
     print("\nTroubleshooting:")
