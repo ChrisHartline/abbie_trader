@@ -12,13 +12,13 @@ Includes:
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 import torch
 import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import warnings
+import os
 warnings.filterwarnings('ignore')
 
 # ============================
@@ -98,6 +98,74 @@ def run_ekf(price_series, dt=1.0):
     return level, velocity
 
 # ============================
+# Download BTC data from Alpha Vantage
+# ============================
+def download_btc_alphavantage(api_key, start_date="2022-01-01"):
+    """
+    Download BTC daily data from Alpha Vantage
+
+    Args:
+        api_key: Alpha Vantage API key
+        start_date: Start date for historical data (YYYY-MM-DD)
+
+    Returns:
+        DataFrame with close prices
+    """
+    print(f"Fetching BTC data from Alpha Vantage (from {start_date})...")
+
+    # Alpha Vantage Digital Currency Daily endpoint
+    url = f"https://www.alphavantage.co/query"
+    params = {
+        'function': 'DIGITAL_CURRENCY_DAILY',
+        'symbol': 'BTC',
+        'market': 'USD',
+        'apikey': api_key,
+        'outputsize': 'full'  # Get full history
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+
+        if 'Error Message' in data:
+            raise ValueError(f"Alpha Vantage API error: {data['Error Message']}")
+
+        if 'Note' in data:
+            raise ValueError(f"Alpha Vantage rate limit: {data['Note']}")
+
+        if 'Time Series (Digital Currency Daily)' not in data:
+            raise ValueError(f"Unexpected API response: {data}")
+
+        # Parse the time series data
+        time_series = data['Time Series (Digital Currency Daily)']
+
+        # Convert to DataFrame
+        df = pd.DataFrame.from_dict(time_series, orient='index')
+        df.index = pd.to_datetime(df.index)
+        df = df.sort_index()
+
+        # Extract close price (USD)
+        # Alpha Vantage returns '4a. close (USD)' for crypto close price
+        close_col = '4a. close (USD)'
+        if close_col not in df.columns:
+            # Try alternative column names
+            close_col = next((col for col in df.columns if 'close' in col.lower() and 'usd' in col.lower()), None)
+            if close_col is None:
+                raise ValueError(f"Could not find close price column. Available columns: {df.columns.tolist()}")
+
+        close = df[close_col].astype(float)
+
+        # Filter by start date
+        close = close[close.index >= start_date]
+
+        print(f"✓ Downloaded {len(close)} days from Alpha Vantage")
+        return close
+
+    except Exception as e:
+        print(f"✗ Error downloading from Alpha Vantage: {e}")
+        raise
+
+# ============================
 # Get historical funding rates
 # ============================
 def get_historical_funding(dates):
@@ -147,21 +215,45 @@ except FileNotFoundError as e:
 # ============================
 print("Downloading BTC historical data...")
 START_DATE = "2022-01-01"
-END_DATE = datetime.now().strftime("%Y-%m-%d")
 
-btc = yf.download("BTC-USD", start=START_DATE, end=END_DATE, interval="1d", progress=False)
+# Get Alpha Vantage API key from environment variable or user
+ALPHA_VANTAGE_API_KEY = os.getenv('ALPHA_VANTAGE_API_KEY')
 
-# Handle multi-level columns
-if isinstance(btc.columns, pd.MultiIndex):
-    btc = btc['Close']
-    if isinstance(btc, pd.DataFrame):
-        btc = btc.iloc[:, 0]
+if not ALPHA_VANTAGE_API_KEY:
+    print("\n" + "="*80)
+    print("ALPHA VANTAGE API KEY REQUIRED")
+    print("="*80)
+    print("\nSet your API key using one of these methods:")
+    print("\n1. Environment variable:")
+    print("   export ALPHA_VANTAGE_API_KEY='your_key_here'")
+    print("\n2. Or enter it now:")
+    ALPHA_VANTAGE_API_KEY = input("Enter your Alpha Vantage API key: ").strip()
 
-btc = pd.DataFrame(btc, columns=['close'])
+    if not ALPHA_VANTAGE_API_KEY:
+        print("\n✗ Error: API key required. Get one free at https://www.alphavantage.co/support/#api-key")
+        exit(1)
+
+# Download BTC data from Alpha Vantage
+try:
+    close = download_btc_alphavantage(ALPHA_VANTAGE_API_KEY, START_DATE)
+except Exception as e:
+    print(f"\n✗ Failed to download data: {e}")
+    print("\nTroubleshooting:")
+    print("1. Check your API key is correct")
+    print("2. Verify internet connection")
+    print("3. Alpha Vantage free tier has 25 calls/day limit")
+    exit(1)
+
+# Create DataFrame
+btc = pd.DataFrame({'close': close})
 btc['return'] = np.log(btc['close'] / btc['close'].shift(1))
 btc = btc.dropna()
 
-print(f"✓ Downloaded {len(btc)} days ({btc.index[0]:%Y-%m-%d} to {btc.index[-1]:%Y-%m-%d})\n")
+if len(btc) == 0:
+    print("✗ Error: No data downloaded. Check internet connection and try again.")
+    exit(1)
+
+print(f"Data range: {btc.index[0]:%Y-%m-%d} to {btc.index[-1]:%Y-%m-%d}\n")
 
 # Add synthetic funding rate
 btc['funding'] = get_historical_funding(btc.index)
