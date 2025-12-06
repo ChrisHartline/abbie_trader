@@ -149,14 +149,24 @@ def download_btc_alphavantage(api_key, start_date="2022-01-01"):
         df = df.sort_index()
 
         # Extract close price (USD)
-        # Alpha Vantage returns '4a. close (USD)' for crypto close price
-        close_col = '4a. close (USD)'
-        if close_col not in df.columns:
-            # Try alternative column names
-            close_col = next((col for col in df.columns if 'close' in col.lower() and 'usd' in col.lower()), None)
-            if close_col is None:
-                raise ValueError(f"Could not find close price column. Available columns: {df.columns.tolist()}")
+        # Alpha Vantage may return different column names depending on endpoint
+        # Try multiple possible column names
+        possible_close_cols = ['4a. close (USD)', '4. close', 'close', '4b. close (USD)']
+        close_col = None
 
+        for col in possible_close_cols:
+            if col in df.columns:
+                close_col = col
+                break
+
+        # If still not found, try fuzzy matching
+        if close_col is None:
+            close_col = next((col for col in df.columns if 'close' in col.lower()), None)
+
+        if close_col is None:
+            raise ValueError(f"Could not find close price column. Available columns: {df.columns.tolist()}")
+
+        print(f"Using column: '{close_col}'")
         close = df[close_col].astype(float)
 
         # Filter by start date
