@@ -1,9 +1,9 @@
 from config import *
 
 # =============================================
-# LIVE KRAKEN TESTNET VERSION
-# EKF + FFNN + HyperDUM → BTC/USDT spot
-# Runs on fake money first → flip one line for real
+# LIVE KRAKEN TESTNET VERSION WITH REGIME DETECTION
+# EKF + FFNN + HyperDUM + REGIME FILTER → BTC/USDT spot
+# Regime detection adds macro-level market condition filter
 # =============================================
 
 import numpy as np
@@ -30,11 +30,11 @@ warnings.filterwarnings('ignore')
 def run_ekf(price_series, dt=1.0):
     """
     Extended Kalman Filter for state estimation.
-    
+
     MEAN-REVERSION ROLE: Smooths noise and estimates the "equilibrium level"
     and velocity. When velocity is high and level deviates from recent average,
     price is stretched and mean-reversion is likely.
-    
+
     Returns: (level, velocity) as pandas Series
         - level: Smoothed equilibrium price estimate
         - velocity: Rate of change (high = stretched, low = near equilibrium)
@@ -46,13 +46,19 @@ def run_ekf(price_series, dt=1.0):
     else:
         values = np.array(price_series)
         index = pd.RangeIndex(len(values))
-    
+
+    # Ensure values is a 1D array
+    values = np.asarray(values).flatten()
+
+    if len(values) == 0:
+        raise ValueError("Cannot run EKF on empty price series")
+
     n = len(values)
     x = np.zeros((n, 3))      # [level, velocity, log_var]
     P = np.zeros((n, 3, 3))
 
     # Initial state
-    x[0] = [values[0], 0.0, -5.0]
+    x[0] = np.array([float(values[0]), 0.0, -5.0])
     P[0] = np.eye(3) * 1.0
 
     # Noise parameters (tuned on 2021–2022)
@@ -85,6 +91,102 @@ def run_ekf(price_series, dt=1.0):
     return level, velocity
 
 # -----------------------------
+# 1.5. REGIME DETECTION FUNCTIONS
+# -----------------------------
+def detect_trend_regime(prices, window=20):
+    """
+    Detect trending vs mean-reverting regime
+    Returns: regime (0=mean-reverting, 1=trending), trend_strength
+    """
+    returns = prices.pct_change()
+    up_move = returns.clip(lower=0)
+    down_move = -returns.clip(upper=0)
+
+    up_smooth = up_move.rolling(window).mean()
+    down_smooth = down_move.rolling(window).mean()
+
+    total_move = up_smooth + down_smooth
+    dx = np.abs(up_smooth - down_smooth) / (total_move + 1e-10)
+    adx = dx.rolling(window).mean()
+
+    regime = (adx > 0.4).astype(int)
+    return regime, adx
+
+def detect_volatility_regime(prices, window=20, threshold=1.0):
+    """
+    Detect high vs low volatility regime
+    Returns: regime (0=low vol, 1=high vol), volatility
+    """
+    returns = prices.pct_change()
+    vol = returns.rolling(window).std() * np.sqrt(365)
+    median_vol = vol.rolling(window*5).median()
+    regime = (vol > threshold * median_vol).astype(int)
+    return regime, vol
+
+def detect_regime_stability(trend_regime, vol_regime, window=20):
+    """
+    Detect how stable/persistent current regime is
+    Returns: stability (0-1, higher = more stable)
+    """
+    trend_changes = (trend_regime != trend_regime.shift(1)).astype(int)
+    vol_changes = (vol_regime != vol_regime.shift(1)).astype(int)
+
+    trend_stability = 1 - (trend_changes.rolling(window).sum() / window)
+    vol_stability = 1 - (vol_changes.rolling(window).sum() / window)
+
+    stability = (trend_stability + vol_stability) / 2
+    return stability
+
+def check_regime_status(prices):
+    """
+    Check current market regime and return trading status
+
+    Returns:
+        status: "FAVORABLE", "CAUTION", "WARNING"
+        multiplier: Position size multiplier (0.0 - 1.0)
+        details: Dictionary with regime metrics
+    """
+    # Detect regimes
+    trend_regime, trend_strength = detect_trend_regime(prices)
+    vol_regime, volatility = detect_volatility_regime(prices)
+    stability = detect_regime_stability(trend_regime, vol_regime)
+
+    # Get current values (last in series)
+    current_trend = trend_regime.iloc[-1]
+    current_vol = vol_regime.iloc[-1]
+    current_stability = stability.iloc[-1]
+    current_trend_strength = trend_strength.iloc[-1]
+    current_volatility = volatility.iloc[-1]
+
+    # Determine status and position multiplier
+    if current_trend == 0 and current_stability > 0.7:
+        # FAVORABLE: Mean-reverting regime with high stability
+        status = "FAVORABLE"
+        multiplier = 1.0  # Full position size
+    elif current_trend == 1 and current_stability > 0.7:
+        # CAUTION: Trending regime but stable
+        status = "CAUTION"
+        multiplier = 0.5  # Half position size
+    elif current_stability < 0.5:
+        # WARNING: Unstable regime (transitioning)
+        status = "WARNING"
+        multiplier = 0.0  # No trading
+    else:
+        # NEUTRAL: Mixed conditions
+        status = "NEUTRAL"
+        multiplier = 0.75  # Reduced position size
+
+    details = {
+        'trend_regime': 'TRENDING' if current_trend == 1 else 'MEAN-REVERTING',
+        'vol_regime': 'HIGH-VOL' if current_vol == 1 else 'LOW-VOL',
+        'stability': current_stability,
+        'trend_strength': current_trend_strength,
+        'volatility': current_volatility
+    }
+
+    return status, multiplier, details
+
+# -----------------------------
 # 2. Kraken API setup
 # -----------------------------
 def kraken_request(uri_path, data=None):
@@ -94,21 +196,21 @@ def kraken_request(uri_path, data=None):
         'API-Sign': ''
     }
     url = BASE_URL + uri_path
-    
+
     if data is None:
         return requests.get(url, headers=headers).json()
     else:
         # Generate nonce if not provided
         if 'nonce' not in data:
             data['nonce'] = str(int(time.time() * 1000))
-        
+
         # Generate signature
         postdata = json.dumps(data)
         encoded = (str(data['nonce']) + postdata).encode()
         message = uri_path.encode() + hashlib.sha256(encoded).digest()
         mac = hmac.new(API_SECRET.encode(), message, hashlib.sha512)
         sigdigest = base64.b64encode(mac.digest()).decode()
-        
+
         headers['API-Sign'] = sigdigest
         return requests.post(url, headers=headers, data=data).json()
 
@@ -142,25 +244,25 @@ def place_market_order(pair, side, size):
 def get_funding_rate():
     """
     Get REAL BTC funding rate from multiple sources (Binance, Bybit, OKX).
-    
+
     CRITICAL IMPROVEMENT: Real funding rate is the #1 driver of BTC returns 2022-2025.
     This was a huge edge over synthetic/approximate funding rates. Funding rate is the strongest
     mean-reversion signal - high funding = shorts pay longs = price likely to revert up.
-    
+
     Tries multiple exchanges as fallback since Binance may be geo-blocked.
     """
     sources = [
         # Binance (primary)
-        ("Binance", "https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT", 
+        ("Binance", "https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT",
          lambda d: float(d.get('lastFundingRate', 0))),
         # Bybit (fallback 1)
-        ("Bybit", "https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT", 
+        ("Bybit", "https://api.bybit.com/v5/market/tickers?category=linear&symbol=BTCUSDT",
          lambda d: float(d.get('result', {}).get('list', [{}])[0].get('fundingRate', 0)) if d.get('result', {}).get('list') else 0),
         # OKX (fallback 2)
-        ("OKX", "https://www.okx.com/api/v5/public/funding-rate?instId=BTC-USDT-SWAP", 
+        ("OKX", "https://www.okx.com/api/v5/public/funding-rate?instId=BTC-USDT-SWAP",
          lambda d: float(d.get('data', [{}])[0].get('fundingRate', 0)) if d.get('data') else 0),
     ]
-    
+
     for source_name, url, extract_func in sources:
         try:
             resp = requests.get(url, timeout=5)
@@ -171,7 +273,7 @@ def get_funding_rate():
                 return funding
         except Exception:
             continue  # Try next source
-    
+
     return 0.0001  # default neutral if all sources fail
 
 # -----------------------------
@@ -216,10 +318,10 @@ except FileNotFoundError as e:
     exit(1)
 
 # -----------------------------
-# 4. Live trading loop
+# 4. Live trading loop with REGIME DETECTION
 # -----------------------------
 print(f"\n{'='*60}")
-print(f"Q-PRIME LIVE TRADING SYSTEM")
+print(f"Q-PRIME LIVE TRADING SYSTEM (WITH REGIME DETECTION)")
 print(f"{'='*60}")
 print(f"Pair: {PAIR}")
 print(f"Base URL: {BASE_URL}")
@@ -243,138 +345,177 @@ iteration = 0
 while True:
     try:
         iteration += 1
-        print(f"\n--- Iteration {iteration} | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---")
-        
+        print(f"\n{'='*80}")
+        print(f"Iteration {iteration} | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*80}")
+
         # Get latest OHLCV from Kraken (need at least 60 days for vol calc)
         resp = requests.get(f"{BASE_URL}/0/public/OHLC?pair={PAIR}&interval=1440", timeout=10).json()
         if 'result' not in resp or PAIR not in resp['result']:
             print(f"⚠ API error: {resp}")
             time.sleep(60)
             continue
-            
+
         ohlc = resp['result'][PAIR]
         df = pd.DataFrame(ohlc, columns=['time','open','high','low','close','vwap','volume','count'])
         df['close'] = df['close'].astype(float)
         df['time'] = pd.to_datetime(df['time'], unit='s')
         df = df.set_index('time')
-        
+
         if len(df) < 60:
             print(f"⚠ Insufficient data: {len(df)} candles (need 60+)")
             time.sleep(300)
             continue
-            
+
         price = df['close'].iloc[-1]
         last_price = price
-        
+
+        # ============================================
+        # REGIME DETECTION CHECK (NEW!)
+        # ============================================
+        print(f"\n{'─'*80}")
+        print(f"📊 REGIME ANALYSIS")
+        print(f"{'─'*80}")
+        regime_status, regime_multiplier, regime_details = check_regime_status(df['close'])
+
+        print(f"Regime Status:    {regime_status}")
+        print(f"Trend:            {regime_details['trend_regime']}")
+        print(f"Volatility:       {regime_details['vol_regime']}")
+        print(f"Stability:        {regime_details['stability']:.2%}")
+        print(f"Trend Strength:   {regime_details['trend_strength']:.4f}")
+        print(f"Volatility Level: {regime_details['volatility']:.2%}")
+        print(f"Position Mult:    {regime_multiplier:.0%}")
+
+        if regime_status == "FAVORABLE":
+            print("✅ FAVORABLE: Mean-reverting regime with high stability")
+            print("   → Strategy: Full position sizing enabled")
+        elif regime_status == "CAUTION":
+            print("⚠️  CAUTION: Trending regime detected")
+            print("   → Strategy: Position size reduced to 50%")
+        elif regime_status == "WARNING":
+            print("🛑 WARNING: Unstable regime (transitioning)")
+            print("   → Strategy: Trading disabled - regime unstable")
+        else:
+            print("ℹ️  NEUTRAL: Mixed conditions")
+            print("   → Strategy: Position size reduced to 75%")
+
         # Run EKF to get level and velocity
+        print(f"\n{'─'*80}")
+        print(f"🔧 EKF & FEATURE ANALYSIS")
+        print(f"{'─'*80}")
         level_series, velocity_series = run_ekf(df['close'])
         level = level_series.iloc[-1]
         velocity = velocity_series.iloc[-1]
-        
+
         # Get funding rate
         funding = get_funding_rate()
-        
+
         # Calculate features
         df['return'] = np.log(df['close'] / df['close'].shift(1))
         recent_ret = df['return'].iloc[-5:].mean() if len(df) >= 5 else 0.0
         rel_price = price / df['close'].iloc[-30:].mean() - 1 if len(df) >= 30 else 0.0
-        
+
         # Build feature vector (same as training)
         feat = np.array([[level, velocity, funding, recent_ret, rel_price]])
         feat_s = scaler.transform(feat)
-        
-        # FFNN prediction: Learns exogenous drivers (funding rates, momentum, relative price)
-        # that predict mean-reversion. Positive pred = price likely to revert up (fade down),
-        # negative pred = price likely to revert down (fade up).
+
+        # FFNN prediction
         with torch.no_grad():
             pred = model(torch.FloatTensor(feat_s).to(device)).item()
-        
-        # HyperDUM uncertainty check: THE SINGLE BIGGEST WIN RATE IMPROVEMENT
-        # Detects out-of-distribution feature combinations (funding + velocity + momentum)
-        # that the model has never seen during training. When Hamming distance > threshold,
-        # it means "I have never seen this combination → sit out" — and these were exactly
-        # the days that killed the original 49% win rate model. HyperDUM turns 49% → 66%+.
-        # Skips regime shifts (ETF launches, structural breaks) to avoid whipsaws.
+
+        # HyperDUM uncertainty check
         projected = np.sign(feat_s @ projector)
         hamming_dist = np.mean(projected != memory_vector)
-        
+
         # Calculate realized volatility (60-day annualized)
         recent_vol = df['return'].iloc[-60:].std() * np.sqrt(252) if len(df) >= 60 else 0.20
-        
+
         # Risk gates
         gross_exposure = abs(position * price) / max(cash, 1.0)
-        
+
         print(f"Price: ${price:.2f} | EKF Level: {level:.2f} | EKF Velocity: {velocity:.4f}")
         print(f"Funding Rate: {funding:.6f} | 60d Realized Vol: {recent_vol:.2%}")
         print(f"Predicted 1d Return: {pred:.4f} | Hamming Distance: {hamming_dist:.4f}")
         print(f"Current Position: {position:.6f} BTC | Gross Exposure: {gross_exposure:.2%}")
-        
-        # HYPERDUM GATE: THE SINGLE BIGGEST WIN RATE IMPROVEMENT (49% → 66%+)
-        # Detects OOD feature combinations: "I have never seen funding + velocity + momentum
-        # behave like this → sit out". These were exactly the days the original model bled.
-        # Mean-reversion breaks during structural changes (ETF launches, regulatory shifts).
-        # HyperDUM prevents whipsaws by skipping unknown regimes.
-        if hamming_dist > UNCERTAINTY_THRESHOLD:
-            print(f"🚫 HYPERDUM GATE: Hamming distance {hamming_dist:.4f} > {UNCERTAINTY_THRESHOLD}")
-            print(f"   → NO TRADE (OOD regime detected - feature combination never seen in training)")
-            print(f"   → This is why win rate improved from 49% to 66%+")
+
+        # ============================================
+        # TRADING DECISION (WITH REGIME FILTER)
+        # ============================================
+        print(f"\n{'─'*80}")
+        print(f"🎯 TRADING DECISION")
+        print(f"{'─'*80}")
+
+        # REGIME GATE (NEW!): Override based on regime
+        if regime_multiplier == 0.0:
+            print(f"🚫 REGIME GATE: {regime_status} regime detected")
+            print(f"   → NO TRADE (regime filter disabled trading)")
             target = 0.0
-        # RISK GATE: Never exceed max gross exposure
+        # HYPERDUM GATE: Out-of-distribution detection
+        elif hamming_dist > UNCERTAINTY_THRESHOLD:
+            print(f"🚫 HYPERDUM GATE: Hamming distance {hamming_dist:.4f} > {UNCERTAINTY_THRESHOLD}")
+            print(f"   → NO TRADE (OOD feature combination detected)")
+            target = 0.0
+        # RISK GATE: Position limit
         elif gross_exposure > MAX_GROSS_EXPOSURE:
             print(f"🚫 RISK GATE: Gross exposure {gross_exposure:.2%} > {MAX_GROSS_EXPOSURE:.0%}")
             print(f"   → NO TRADE (position limit exceeded)")
             target = 0.0
         else:
-            # MEAN-REVERSION SIGNAL: Fade extremes
-            # Positive pred = price stretched down, expect reversion up → LONG
-            # Negative pred = price stretched up, expect reversion down → SHORT
-            # Volatility targeting with fractional Kelly for position sizing
+            # SIGNAL: Mean-reversion with regime-adjusted sizing
             risk = min(MAX_GROSS_EXPOSURE, VOL_TARGET / max(recent_vol, 0.01))
-            target = np.sign(pred) * risk * KELLY_FRACTION
-            
-            print(f"✓ Risk gates passed | Target exposure: {abs(target):.2%}")
-        
+            base_target = np.sign(pred) * risk * KELLY_FRACTION
+
+            # APPLY REGIME MULTIPLIER (NEW!)
+            target = base_target * regime_multiplier
+
+            print(f"✓ All gates passed")
+            print(f"  Base target exposure: {abs(base_target):.2%}")
+            print(f"  Regime multiplier: {regime_multiplier:.0%}")
+            print(f"  Final target exposure: {abs(target):.2%}")
+
         # Calculate target position size
         target_position_value = cash * target
         target_position_size = target_position_value / price
-        
+
         # Execute trades
         position_diff = target_position_size - position
-        
+
         if abs(position_diff) > 0.001:  # Minimum trade size
             if position_diff > 0:
-                # Buy: Fading down (price below equilibrium, expect mean-reversion up)
                 print(f"📈 SIGNAL: BUY {position_diff:.6f} BTC @ ${price:.2f} (fade down)")
                 order_result = place_market_order(PAIR, 'buy', position_diff)
                 if 'result' in order_result:
                     position += position_diff
-                    cash -= position_diff * price  # Approximate cost
+                    cash -= position_diff * price
                     print(f"✓ Order executed: {order_result['result']['txid']}")
                 else:
                     print(f"✗ Order failed: {order_result}")
             else:
-                # Sell: Fading up (price above equilibrium, expect mean-reversion down)
                 print(f"📉 SIGNAL: SELL {abs(position_diff):.6f} BTC @ ${price:.2f} (fade up)")
                 order_result = place_market_order(PAIR, 'sell', abs(position_diff))
                 if 'result' in order_result:
-                    position += position_diff  # position_diff is negative
-                    cash -= position_diff * price  # Approximate proceeds
+                    position += position_diff
+                    cash -= position_diff * price
                     print(f"✓ Order executed: {order_result['result']['txid']}")
                 else:
                     print(f"✗ Order failed: {order_result}")
         else:
             print("→ No trade (position already optimal)")
-        
+
         # Update equity (mark-to-market)
         equity = cash + position * price
         equity_curve.append(equity)
         pnl_pct = (equity / initial_cash - 1) * 100
-        
-        print(f"\n💰 EQUITY: ${equity:.2f} | PnL: {pnl_pct:+.2f}% | Position: {position:.6f} BTC")
-        
+
+        print(f"\n{'─'*80}")
+        print(f"💰 PORTFOLIO STATUS")
+        print(f"{'─'*80}")
+        print(f"Equity: ${equity:.2f} | PnL: {pnl_pct:+.2f}% | Position: {position:.6f} BTC")
+        print(f"{'='*80}\n")
+
         # Sleep until next day (or shorter for testing)
         time.sleep(86400)  # 24 hours
-        
+
     except KeyboardInterrupt:
         print("\n\n⚠ Trading stopped by user")
         break
