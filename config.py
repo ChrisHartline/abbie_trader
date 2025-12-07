@@ -28,7 +28,10 @@ INITIAL_USD = 100.0
 
 # Risk Management Parameters
 VOL_TARGET = 0.20                    # Annual volatility target (20%)
-UNCERTAINTY_THRESHOLD = 0.385        # HyperDUM gate threshold (Hamming distance)
+UNCERTAINTY_THRESHOLD = 0.60         # HyperDUM gate threshold (Hamming distance)
+                                     # Updated from 0.385 to 0.60 based on 2017-2025 training
+                                     # Training stats: 0.5846 (10% trades), 0.6282 (25%), 0.6650 (50%)
+                                     # 0.60 allows ~15-20% of trades (selective but not overly strict)
 MAX_GROSS_EXPOSURE = 0.50            # Maximum gross exposure (50% of capital)
 KELLY_FRACTION = 0.25                # Fractional Kelly multiplier (0.25x = conservative)
                                      # Increase for more aggressive sizing (e.g., 0.5x, 1.0x)

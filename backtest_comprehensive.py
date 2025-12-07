@@ -496,7 +496,12 @@ for year in equity_df['year'].unique():
         year_total = (year_data['equity'].iloc[-1] / year_data['equity'].iloc[0] - 1) * 100
         btc_year_total = (year_data['price'].iloc[-1] / year_data['price'].iloc[0] - 1) * 100
         year_sharpe = np.mean(year_returns) / np.std(year_returns) * np.sqrt(252) if np.std(year_returns) > 0 else 0
-        year_trades = len(trades_df[trades_df['date'].dt.year == year])
+
+        # Handle empty trades_df
+        if len(trades_df) > 0 and 'date' in trades_df.columns:
+            year_trades = len(trades_df[trades_df['date'].dt.year == year])
+        else:
+            year_trades = 0
 
         print(f"{year}: Return={year_total:+.2f}% (BTC: {btc_year_total:+.2f}%), "
               f"Sharpe={year_sharpe:.2f}, Trades={year_trades}")
