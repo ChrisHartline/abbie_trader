@@ -112,20 +112,30 @@ def download_btc_alphavantage(api_key, start_date="2017-01-01"):
     df.index = pd.to_datetime(df.index)
     df = df.sort_index()
 
-    # Find close column
+    # Debug: Show what columns we got
+    print(f"Columns received from API: {df.columns.tolist()}")
+
+    # Find close column - try exact matches first
     possible_cols = ['4a. close (USD)', '4. close', 'close', '4b. close (USD)']
     close_col = None
 
     for col in possible_cols:
         if col in df.columns:
             close_col = col
+            print(f"Found exact match: '{close_col}'")
             break
 
+    # Fallback: try case-insensitive fuzzy match
     if close_col is None:
-        close_col = next((col for col in df.columns if 'close' in col.lower()), None)
+        print("No exact match, trying fuzzy match...")
+        for col in df.columns:
+            if 'close' in col.lower():
+                close_col = col
+                print(f"Found fuzzy match: '{close_col}'")
+                break
 
     if close_col is None:
-        raise ValueError(f"Could not find close price column. Available: {df.columns.tolist()}")
+        raise ValueError(f"Could not find close price column. Available columns: {df.columns.tolist()}")
 
     print(f"Using column: '{close_col}'")
     close = df[close_col].astype(float)
@@ -136,14 +146,20 @@ def download_btc_alphavantage(api_key, start_date="2017-01-01"):
     print(f"✓ Downloaded {len(close)} days from Alpha Vantage")
     return close
 
-# Get API key
+# Get API key from .env file
 ALPHAVANTAGE_API_KEY = os.getenv('ALPHAVANTAGE_API_KEY')
-if not ALPHAVANTAGE_API_KEY:
+
+if ALPHAVANTAGE_API_KEY:
+    print(f"✓ API key loaded from .env file (length: {len(ALPHAVANTAGE_API_KEY)} chars)")
+else:
     print("\n" + "="*80)
-    print("ALPHA VANTAGE API KEY REQUIRED")
+    print("ALPHA VANTAGE API KEY NOT FOUND IN .ENV FILE")
     print("="*80)
-    print("Add to .env file: ALPHAVANTAGE_API_KEY=your_key_here")
+    print("Please ensure you have a .env file in the current directory with:")
+    print("  ALPHAVANTAGE_API_KEY=your_key_here")
+    print("")
     print("Or get free key at: https://www.alphavantage.co/support/#api-key")
+    print("="*80)
     ALPHAVANTAGE_API_KEY = input("\nEnter your Alpha Vantage API key: ").strip()
     if not ALPHAVANTAGE_API_KEY:
         raise ValueError("API key required")
