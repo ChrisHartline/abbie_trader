@@ -20,6 +20,7 @@ from datetime import datetime, timedelta
 import warnings
 import os
 from dotenv import load_dotenv
+from market_regime_router import MarketRegimeRouter
 warnings.filterwarnings('ignore')
 
 # Load environment variables from .env file
@@ -30,6 +31,14 @@ load_dotenv()
 # ============================
 from config import VOL_TARGET, UNCERTAINTY_THRESHOLD, MAX_GROSS_EXPOSURE, KELLY_FRACTION
 INITIAL_USD = 10000.0
+
+# Adaptive threshold configuration (set to None to use fixed threshold from config.py)
+USE_ADAPTIVE_THRESHOLD = True  # Set to False to use fixed threshold
+ADAPTIVE_THRESHOLDS = {
+    'BULL': 0.70,
+    'TRANSITION': 0.65,
+    'BEAR': 0.60
+}
 
 # ============================
 # FFNN class (must match training)
@@ -277,12 +286,27 @@ btc['funding'] = get_historical_funding(btc.index)
 print("Running backtest...")
 print("="*80)
 
+# Initialize regime router if using adaptive thresholds
+if USE_ADAPTIVE_THRESHOLD:
+    router = MarketRegimeRouter()
+    regime_log = []
+    print(f"Using ADAPTIVE thresholds: Bull={ADAPTIVE_THRESHOLDS['BULL']}, "
+          f"Transition={ADAPTIVE_THRESHOLDS['TRANSITION']}, Bear={ADAPTIVE_THRESHOLDS['BEAR']}")
+else:
+    router = None
+    regime_log = None
+    print(f"Using FIXED threshold: {UNCERTAINTY_THRESHOLD}")
+
+print()
+
 # Initialize
 cash = INITIAL_USD
 position = 0.0
 equity_curve = []
 trade_log = []
 daily_metrics = []
+trades_by_regime = {'BULL': 0, 'TRANSITION': 0, 'BEAR': 0}
+blocked_by_regime = {'BULL': 0, 'TRANSITION': 0, 'BEAR': 0}
 
 # Need at least 60 days for vol calculation
 START_IDX = 60
@@ -320,6 +344,16 @@ for i in range(START_IDX, len(btc)):
     projected = np.sign(feat_s @ projector)
     hamming_dist = np.mean(projected != memory_vector)
 
+    # Classify market regime and get adaptive threshold
+    if USE_ADAPTIVE_THRESHOLD:
+        regime, confidence, signals = router.classify(hist_close)
+        current_threshold = ADAPTIVE_THRESHOLDS[regime]
+        if regime_log is not None:
+            regime_log.append(regime)
+    else:
+        regime = None
+        current_threshold = UNCERTAINTY_THRESHOLD
+
     # Calculate realized volatility (60-day)
     recent_vol = hist_returns.iloc[-60:].std() * np.sqrt(252) if len(hist_returns) >= 60 else 0.20
 
@@ -330,14 +364,18 @@ for i in range(START_IDX, len(btc)):
     target = 0.0
     skip_reason = None
 
-    if hamming_dist > UNCERTAINTY_THRESHOLD:
+    if hamming_dist > current_threshold:
         skip_reason = "HyperDUM"
+        if USE_ADAPTIVE_THRESHOLD and regime:
+            blocked_by_regime[regime] += 1
     elif gross_exposure > MAX_GROSS_EXPOSURE and abs(pred) > 0:
         skip_reason = "RiskGate"
     else:
         # Calculate target
         risk = min(MAX_GROSS_EXPOSURE, VOL_TARGET / max(recent_vol, 0.01))
         target = np.sign(pred) * risk * KELLY_FRACTION
+        if USE_ADAPTIVE_THRESHOLD and regime and abs(target) > 0.001:
+            trades_by_regime[regime] += 1
 
     # Calculate target position size
     equity = cash + position * price
@@ -468,6 +506,25 @@ print(f"Total Trades:             {num_trades}")
 print(f"Days with Position:       {days_with_position} ({days_with_position/len(equity_df)*100:.1f}%)")
 print(f"Days Skipped (HyperDUM):  {days_skipped_hyperdum} ({days_skipped_hyperdum/len(equity_df)*100:.1f}%)")
 print(f"Days Skipped (Risk Gate): {days_skipped_risk} ({days_skipped_risk/len(equity_df)*100:.1f}%)")
+
+# Print regime statistics if using adaptive thresholds
+if USE_ADAPTIVE_THRESHOLD and regime_log:
+    from collections import Counter
+    regime_counts = Counter(regime_log)
+    total_days = sum(regime_counts.values())
+
+    print(f"\n{'─'*80}")
+    print("REGIME BREAKDOWN (Adaptive Threshold)")
+    print(f"{'─'*80}")
+    for regime_type in ['BULL', 'TRANSITION', 'BEAR']:
+        days = regime_counts.get(regime_type, 0)
+        taken = trades_by_regime.get(regime_type, 0)
+        blocked = blocked_by_regime.get(regime_type, 0)
+        threshold_used = ADAPTIVE_THRESHOLDS[regime_type]
+        participation = (taken / days * 100) if days > 0 else 0
+
+        print(f"{regime_type:12s}: {days:4d} days, threshold {threshold_used:.2f}, "
+              f"{taken:3d} trades, {blocked:4d} blocked ({participation:.1f}% participation)")
 
 if num_trades > 0:
     print(f"\n{'─'*80}")
