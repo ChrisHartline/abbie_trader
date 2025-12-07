@@ -15,6 +15,7 @@ Usage: python test_thresholds.py
 import numpy as np
 import pandas as pd
 import torch
+import torch.nn as nn
 from config import VOL_TARGET, MAX_GROSS_EXPOSURE, KELLY_FRACTION
 import os
 from dotenv import load_dotenv
@@ -25,6 +26,23 @@ load_dotenv()
 
 # Thresholds to test
 THRESHOLDS = [0.60, 0.55, 0.50, 0.45, 0.40, 0.35]
+
+# FFNN model definition (required for loading the model)
+class FFNN(nn.Module):
+    def __init__(self, input_size=5, hidden=64):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_size, hidden),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(hidden, hidden//2),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(hidden//2, 1)
+        )
+
+    def forward(self, x):
+        return self.net(x)
 
 # Download BTC data from Alpha Vantage
 def download_btc_alphavantage(api_key, start_date="2022-01-01"):
