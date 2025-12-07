@@ -246,8 +246,8 @@ def main():
 
     # Load models
     print("\nLoading models...")
-    model = torch.load('btc_model.pth', map_location='cpu')
-    scaler = torch.load('btc_scaler.pth', map_location='cpu')
+    model = torch.load('btc_model.pth', map_location='cpu', weights_only=False)
+    scaler = torch.load('btc_scaler.pth', map_location='cpu', weights_only=False)
     projector = np.load('projector.npy')
     memory = np.load('memory.npy')
     print("✓ Models loaded")
