@@ -11,14 +11,19 @@ Generates: btc_model.pth, btc_scaler.pth, projector.npy, memory.npy
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 import warnings
+import os
+import requests
+from dotenv import load_dotenv
 warnings.filterwarnings('ignore')
+
+# Load environment variables
+load_dotenv()
 
 # -----------------------------
 # 1. Extended Kalman Filter (EKF)
@@ -68,68 +73,105 @@ def run_ekf(price_series, dt=1.0):
     return level, velocity
 
 # -----------------------------
-# 2. Download BTC data
+# 2. Download BTC data from Alpha Vantage
 # -----------------------------
-# CRITICAL: Start from 2022-01-01, NOT 2021
-# Dropping 2021 data prevents "always long" bias (2021 was pure bull run)
-# This was a key improvement: stopped model from learning "always long"
-# TIMEFRAME: Change "1d" to "4h" for 4-hour, or keep "1d" for daily
-# NOTE: Daily data is recommended for training (better historical coverage)
-# 4h data from Yahoo Finance is limited to last 730 days only
-TIMEFRAME = "1d"  # Options: "1d" (daily - RECOMMENDED), "4h" (4-hour - limited), "1h" (hourly - limited)
-TIMEFRAME_LABEL = "4-hour" if TIMEFRAME == "4h" else "daily" if TIMEFRAME == "1d" else "hourly"
+# UPDATED: Now using Alpha Vantage API with data from 2017
+# This includes FULL market cycles (2017 bull, 2018 bear, 2020-2021 bull, 2022 bear, 2023-2025 bull)
+# Training on both bull AND bear markets prevents regime bias
+# Previous version (2022 only) caused HyperDUM to treat bull markets as "abnormal"
 
-print(f"Downloading BTC data ({TIMEFRAME_LABEL} timeframe)...")
+START_DATE = "2017-01-01"  # Full cycle coverage: 2017-2025
 
-# yfinance limitation: 4h/1h data only available for last 730 days
-# For training, daily data is recommended (full historical coverage from 2022)
-btc = None
-if TIMEFRAME == "4h" or TIMEFRAME == "1h":
-    print(f"Note: {TIMEFRAME_LABEL} data limited to last 730 days by yfinance. Downloading recent data...")
-    try:
-        btc = yf.download("BTC-USD", period="730d", interval=TIMEFRAME, progress=False)
-        if btc.empty or len(btc) == 0:
-            raise ValueError("Empty dataframe returned")
-        print(f"Successfully downloaded {len(btc)} {TIMEFRAME_LABEL} periods")
-    except Exception as e:
-        print(f"Warning: Failed to download {TIMEFRAME_LABEL} data: {e}")
-        print("Falling back to daily data (better for training with full historical coverage)...")
-        TIMEFRAME = "1d"
-        TIMEFRAME_LABEL = "daily"
-        btc = yf.download("BTC-USD", start="2022-01-01", end=None, interval=TIMEFRAME, progress=False)
-else:
-    # Daily data - can get full history
-    print("Downloading daily data (full historical coverage from 2022)...")
-    btc = yf.download("BTC-USD", start="2022-01-01", end=None, interval=TIMEFRAME, progress=False)
+def download_btc_alphavantage(api_key, start_date="2017-01-01"):
+    """Download BTC daily data from Alpha Vantage"""
+    print(f"Downloading BTC data from Alpha Vantage (from {start_date})...")
 
-# Validate downloaded data
-if btc is None or btc.empty or len(btc) == 0:
-    raise ValueError(
-        f"Failed to download BTC data. "
-        f"Possible reasons: network issue, Yahoo Finance API error, or invalid timeframe '{TIMEFRAME}'. "
-        f"Try using daily data (TIMEFRAME='1d') for better reliability."
-    )
+    url = "https://www.alphavantage.co/query"
+    params = {
+        'function': 'DIGITAL_CURRENCY_DAILY',
+        'symbol': 'BTC',
+        'market': 'USD',
+        'apikey': api_key,
+        'outputsize': 'full'
+    }
 
-# Handle MultiIndex columns (yfinance sometimes returns these)
-if isinstance(btc.columns, pd.MultiIndex):
-    btc = btc.xs('Close', axis=1, level=0, drop_level=False)
-    if isinstance(btc.columns, pd.MultiIndex):
-        # If still MultiIndex, try to flatten
-        btc.columns = btc.columns.get_level_values(-1)
+    response = requests.get(url, params=params, timeout=30)
+    data = response.json()
 
-# Ensure we have Close column
-if len(btc.columns) == 1:
-    btc.columns = ['Close']
-elif 'Close' not in btc.columns:
-    # Try to find close column
-    close_col = [c for c in btc.columns if 'close' in str(c).lower() or 'Close' in str(c)]
-    if close_col:
-        btc = btc[[close_col[0]]]
-        btc.columns = ['Close']
-    else:
-        raise ValueError(f"Could not find 'Close' column in downloaded data. Columns: {btc.columns.tolist()}")
+    if 'Error Message' in data:
+        raise ValueError(f"Alpha Vantage API error: {data['Error Message']}")
 
-print(f"Downloaded {len(btc)} periods from {btc.index[0]} to {btc.index[-1]}")
+    if 'Note' in data:
+        raise ValueError(f"Alpha Vantage rate limit: {data['Note']}")
+
+    if 'Time Series (Digital Currency Daily)' not in data:
+        raise ValueError(f"Unexpected API response. Check your API key.")
+
+    time_series = data['Time Series (Digital Currency Daily)']
+    df = pd.DataFrame.from_dict(time_series, orient='index')
+    df.index = pd.to_datetime(df.index)
+    df = df.sort_index()
+
+    # Find close column
+    possible_cols = ['4a. close (USD)', '4. close', 'close', '4b. close (USD)']
+    close_col = None
+
+    for col in possible_cols:
+        if col in df.columns:
+            close_col = col
+            break
+
+    if close_col is None:
+        close_col = next((col for col in df.columns if 'close' in col.lower()), None)
+
+    if close_col is None:
+        raise ValueError(f"Could not find close price column. Available: {df.columns.tolist()}")
+
+    print(f"Using column: '{close_col}'")
+    close = df[close_col].astype(float)
+
+    # Filter by start date
+    close = close[close.index >= start_date]
+
+    print(f"✓ Downloaded {len(close)} days from Alpha Vantage")
+    return close
+
+# Get API key
+ALPHAVANTAGE_API_KEY = os.getenv('ALPHAVANTAGE_API_KEY')
+if not ALPHAVANTAGE_API_KEY:
+    print("\n" + "="*80)
+    print("ALPHA VANTAGE API KEY REQUIRED")
+    print("="*80)
+    print("Add to .env file: ALPHAVANTAGE_API_KEY=your_key_here")
+    print("Or get free key at: https://www.alphavantage.co/support/#api-key")
+    ALPHAVANTAGE_API_KEY = input("\nEnter your Alpha Vantage API key: ").strip()
+    if not ALPHAVANTAGE_API_KEY:
+        raise ValueError("API key required")
+
+print(f"\nTraining on data from {START_DATE} to present")
+print("This includes full bull/bear market cycles:")
+print("  - 2017: Bull (+1900%)")
+print("  - 2018: Bear (-84%)")
+print("  - 2020-2021: Bull (+763%)")
+print("  - 2022: Bear (-78%)")
+print("  - 2023-2025: Bull (+704%)")
+print("\nThis balanced training prevents regime bias!\n")
+
+# Download data
+try:
+    close_prices = download_btc_alphavantage(ALPHAVANTAGE_API_KEY, START_DATE)
+except Exception as e:
+    print(f"\n✗ Error downloading data: {e}")
+    print("Please check your API key and internet connection")
+    exit(1)
+
+# Create DataFrame
+btc = pd.DataFrame({'Close': close_prices})
+
+# Using daily timeframe (Alpha Vantage provides daily data)
+TIMEFRAME = "1d"
+
+print(f"✓ Training data ready: {len(btc)} days from {btc.index[0]:%Y-%m-%d} to {btc.index[-1]:%Y-%m-%d}")
 
 btc['return'] = np.log(btc['Close'] / btc['Close'].shift(1))
 
