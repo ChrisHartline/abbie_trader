@@ -161,9 +161,20 @@ def train_ticker(ticker):
 
     # Download data
     print(f"Downloading {ticker} data...")
-    df = yf.download(ticker, start=START_DATE, end=None, interval=TIMEFRAME, progress=False)
+    try:
+        df = yf.download(ticker, start=START_DATE, end=None, interval=TIMEFRAME, progress=False)
+    except Exception as e:
+        print(f"  Error downloading {ticker}: {e}")
+        return False
 
-    # Handle MultiIndex columns
+    # Check if download succeeded
+    if df is None or len(df) == 0:
+        print(f"  ERROR: Failed to download data for {ticker}. Yahoo Finance returned no data.")
+        print(f"  Possible causes: network issues, invalid ticker, or API rate limiting.")
+        print(f"  Try again in a few minutes or check your internet connection.")
+        return False
+
+    # Handle MultiIndex columns (yfinance sometimes returns this format)
     if isinstance(df.columns, pd.MultiIndex):
         df = df.xs('Close', axis=1, level=0, drop_level=False)
         if isinstance(df.columns, pd.MultiIndex):
@@ -178,10 +189,11 @@ def train_ticker(ticker):
             df = df[[close_col[0]]]
             df.columns = ['Close']
         else:
-            raise ValueError(f"Could not find 'Close' column for {ticker}")
+            print(f"  Error: Could not find 'Close' column for {ticker}")
+            return False
 
     if df.empty or len(df) < 100:
-        print(f"  Error: Insufficient data for {ticker} (got {len(df)} rows)")
+        print(f"  Error: Insufficient data for {ticker} (got {len(df)} rows). Need at least 100 days.")
         return False
 
     print(f"  Downloaded {len(df)} periods from {df.index[0]:%Y-%m-%d} to {df.index[-1]:%Y-%m-%d}")

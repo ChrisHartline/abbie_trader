@@ -169,15 +169,30 @@ def backtest_ticker(ticker):
     print(f"\nDownloading {ticker} data...")
     df = yf.download(ticker, start=START_DATE, end=None, interval="1d", progress=False)
 
-    # Handle MultiIndex columns
+    # Check if download succeeded
+    if df is None or len(df) == 0:
+        print(f"  ERROR: Failed to download data for {ticker}. Yahoo Finance returned no data.")
+        print(f"  Possible causes: network issues, invalid ticker, or API rate limiting.")
+        print(f"  Try again in a few minutes or check your internet connection.")
+        return None
+
+    # Handle MultiIndex columns (yfinance sometimes returns this format)
     if isinstance(df.columns, pd.MultiIndex):
         df = df['Close']
         if isinstance(df, pd.DataFrame):
             df = df.iloc[:, 0]
+    elif 'Close' in df.columns:
+        df = df['Close']
+    elif 'close' in df.columns:
+        df = df['close']
 
     df = pd.DataFrame(df, columns=['close'])
     df['return'] = np.log(df['close'] / df['close'].shift(1))
     df = df.dropna()
+
+    if len(df) < 100:
+        print(f"  ERROR: Insufficient data for {ticker} (only {len(df)} days). Need at least 100 days.")
+        return None
 
     print(f"  Downloaded {len(df)} days ({df.index[0]:%Y-%m-%d} to {df.index[-1]:%Y-%m-%d})")
 
