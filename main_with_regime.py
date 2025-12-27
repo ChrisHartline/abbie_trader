@@ -174,13 +174,13 @@ def check_regime_status(prices, level, velocity, funding_rate, momentum, realize
     stability_score *= velocity_penalty
 
     # Baseline regime label
-    if stability_score < 0.45:
+    if stability_score < STABILITY_WARNING:
         status = "WARNING"
         multiplier = 0.0
     elif current_trend == 1 or abs(velocity_norm) > 0.0015:
         status = "CAUTION"
         multiplier = 0.5
-    elif stability_score > 0.70:
+    elif stability_score > STABILITY_FAVORABLE:
         status = "FAVORABLE"
         multiplier = 1.0
     else:

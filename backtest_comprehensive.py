@@ -29,7 +29,7 @@ load_dotenv()
 # Configuration (from main.py)
 # ============================
 VOL_TARGET = 0.20
-UNCERTAINTY_THRESHOLD = 0.385
+UNCERTAINTY_THRESHOLD = 0.35
 MAX_GROSS_EXPOSURE = 0.50
 KELLY_FRACTION = 0.5
 INITIAL_USD = 10000.0

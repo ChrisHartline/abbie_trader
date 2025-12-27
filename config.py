@@ -29,7 +29,9 @@ INITIAL_USD = 100.0
 
 # Risk Management Parameters
 VOL_TARGET = 0.20                    # Annual volatility target (20%)
-UNCERTAINTY_THRESHOLD = 0.385        # HyperDUM gate threshold (Hamming distance) and regime stability dampener
+UNCERTAINTY_THRESHOLD = 0.35         # HyperDUM gate threshold (2023-2024 sweep: balanced hit-rate vs. DD)
+STABILITY_FAVORABLE = 0.90           # Regime stability cutoff for full sizing (sweep-backed)
+STABILITY_WARNING = 0.75             # Below this, regime filter blocks trading (sweep-backed)
 MAX_GROSS_EXPOSURE = 0.50            # Maximum gross exposure (50% of capital)
 KELLY_FRACTION = 0.25                # Fractional Kelly multiplier (0.25x = conservative)
                                      # Increase for more aggressive sizing (e.g., 0.5x, 1.0x)

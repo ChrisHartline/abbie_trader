@@ -122,10 +122,15 @@ Trade log with columns:
 
 If results are suboptimal, you can adjust these in the backtest script:
 
-### UNCERTAINTY_THRESHOLD (default: 0.385)
-- **Lower (0.30-0.35)**: Trade more often, higher risk
-- **Higher (0.40-0.45)**: Trade less often, lower risk
+### UNCERTAINTY_THRESHOLD (default: 0.35)
+- **Lower (0.30-0.33)**: Trade more often, higher risk
+- **Higher (0.40-0.50)**: Trade less often, lower risk
 - Affects how often HyperDUM blocks trades
+
+### REGIME STABILITY (default: favorable ≥0.90, warning <0.75)
+- **Raise favorable**: Demand more stability before full sizing
+- **Raise warning**: Shut down faster when regimes churn
+- Applied after HyperDUM, before risk sizing
 
 ### VOL_TARGET (default: 0.20)
 - **Lower (0.10-0.15)**: Smaller positions, lower risk

@@ -297,10 +297,10 @@ print(f"\n🎯 OPTIMAL THRESHOLD: {best_threshold:.2f}")
 print(f"   (Maximizes bear protection while minimizing bull blocking)")
 
 print(f"\n📊 THRESHOLD GUIDELINES:")
-print(f"   • Current (0.385): Blocks {(scores_df['hamming_dist'] > 0.385).sum()/len(scores_df)*100:.1f}% of all days")
-print(f"   • Conservative (0.40-0.45): ~50-70% of days blocked")
-print(f"   • Balanced (0.30-0.35): ~30-50% of days blocked ← RECOMMENDED")
-print(f"   • Aggressive (0.25-0.30): ~20-30% of days blocked")
+print(f"   • Current (0.35): Blocks {(scores_df['hamming_dist'] > 0.35).sum()/len(scores_df)*100:.1f}% of all days")
+print(f"   • Conservative (0.35-0.45): more block rate, safer")
+print(f"   • Balanced (0.30-0.35): ~20-40% of days blocked ← RECOMMENDED")
+print(f"   • Aggressive (0.25-0.30): ~10-20% of days blocked")
 
 # Show what happens with optimal threshold
 optimal_bear_block = (bear_scores > best_threshold).sum() / len(bear_scores) * 100

@@ -31,7 +31,7 @@ API_SECRET = os.getenv("KRAKEN_SECRET", "").encode()
 PAIR = "XBTUSDT"
 INITIAL_USD = 100.0
 VOL_TARGET = 0.20
-UNCERTAINTY_THRESHOLD = 0.385
+UNCERTAINTY_THRESHOLD = 0.35
 MAX_TRADE_USD = 5.0                               # ← Safety cap for first live runs
 
 # ============================
