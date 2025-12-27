@@ -31,10 +31,12 @@ load_dotenv()
 # Configuration
 # ============================
 VOL_TARGET = 0.20
-UNCERTAINTY_THRESHOLD = 0.385
+UNCERTAINTY_THRESHOLD = 0.35
 MAX_GROSS_EXPOSURE = 0.50
 KELLY_FRACTION = 0.5
 INITIAL_USD = 10000.0
+STABILITY_FAVORABLE = 0.90
+STABILITY_WARNING = 0.75
 
 # ============================
 # FFNN class
@@ -156,13 +158,13 @@ def check_regime_status(prices):
     current_trend = trend_regime.iloc[-1]
     current_stability = stability.iloc[-1]
 
-    if current_trend == 0 and current_stability > 0.7:
+    if current_trend == 0 and current_stability >= STABILITY_FAVORABLE:
         # FAVORABLE: Mean-reverting + stable
         return 1.0, "FAVORABLE"
-    elif current_trend == 1 and current_stability > 0.7:
+    elif current_trend == 1 and current_stability >= STABILITY_FAVORABLE:
         # CAUTION: Trending but stable
         return 0.5, "CAUTION"
-    elif current_stability < 0.5:
+    elif current_stability < STABILITY_WARNING:
         # WARNING: Unstable
         return 0.0, "WARNING"
     else:

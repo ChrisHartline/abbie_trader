@@ -314,13 +314,13 @@ try:
 except:
     # Defaults if config not available
     VOL_TARGET = 0.20
-    UNCERTAINTY_THRESHOLD = 0.385
+    UNCERTAINTY_THRESHOLD = 0.35
     MAX_GROSS_EXPOSURE = 0.50
     KELLY_FRACTION = 0.25
 
 # Option to test with relaxed threshold (set to None to use config value)
-# Try 0.40, 0.45, or 0.50 if HyperDUM blocks too many trades
-TEST_RELAXED_THRESHOLD = None  # Reset to None to use config value (0.385)
+# Try 0.30, 0.32, or 0.35 if HyperDUM blocks too many trades
+TEST_RELAXED_THRESHOLD = None  # Reset to None to use config value (0.35)
 
 model.eval()
 with torch.no_grad():
@@ -640,7 +640,7 @@ if trades_taken_hyperdum == 0:
     print(f"\n  [WARNING] HyperDUM blocked ALL trades from the start!")
     print(f"     No positions were ever taken. Returns should be ~0%")
     print(f"     Consider lowering UNCERTAINTY_THRESHOLD in config.py (currently {effective_threshold})")
-    print(f"     Or set TEST_RELAXED_THRESHOLD = 0.40 in train_models.py to test with relaxed threshold")
+    print(f"     Or set TEST_RELAXED_THRESHOLD = 0.32 in train_models.py to test with a relaxed threshold")
 elif days_with_position == 0 and total_return_hyperdum != 0:
     print(f"\n  [WARNING] INCONSISTENCY: No positions held but returns are {total_return_hyperdum:.2f}%")
     print(f"     This suggests a bug in the backtest logic")
@@ -650,8 +650,8 @@ elif days_blocked_consecutive > 5:
 elif trades_skipped_hyperdum > len(test_pred) * 0.8:
     print(f"\n  [NOTE] HyperDUM is very conservative (>80% of days blocked)")
     print(f"     Current threshold: {effective_threshold}")
-    print(f"     Consider lowering threshold to 0.40 or 0.45 for more trades")
-    print(f"     Or set TEST_RELAXED_THRESHOLD = 0.40 in train_models.py to test")
+    print(f"     Consider lowering threshold to 0.30-0.35 for more trades")
+    print(f"     Or set TEST_RELAXED_THRESHOLD = 0.32 in train_models.py to test")
 else:
     print(f"\n  [OK] HyperDUM is working - blocking {trades_skipped_hyperdum/len(test_pred)*100:.1f}% of days")
 print("="*60)
@@ -665,4 +665,3 @@ print("  - btc_scaler.pth")
 print("  - projector.npy")
 print("  - memory.npy")
 print("\nReady for live trading!")
-

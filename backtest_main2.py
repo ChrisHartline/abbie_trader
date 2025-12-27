@@ -89,7 +89,7 @@ model.to(device)
 # Configuration (same as main2.py)
 # ============================
 VOL_TARGET = 0.20
-UNCERTAINTY_THRESHOLD = 0.385
+UNCERTAINTY_THRESHOLD = 0.35
 MAX_TRADE_USD = 5.0
 INITIAL_USD = 100.0
 
@@ -224,5 +224,3 @@ if trades_taken == 0:
 elif trades_skipped_hyperdum > (len(btc)-60) * 0.8:
     print(f"\n⚠ NOTE: HyperDUM blocked >80% of days ({trades_skipped_hyperdum/(len(btc)-60)*100:.1f}%)")
     print(f"   This may be too conservative for this period")
-
-
