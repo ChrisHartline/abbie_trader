@@ -2,13 +2,18 @@ from config import *
 
 # =============================================
 # LIVE KRAKEN TESTNET VERSION
-# EKF + FFNN + HyperDUM → BTC/USDT spot
+# EKF + FFNN + HyperDUM + Crisis Detector → BTC/USDT spot
 # Runs on fake money first → flip one line for real
+#
+# ORDER OF GATES:
+# 1. CRISIS DETECTOR - "Oh Shit" gate for dangerous markets
+# 2. HYPERDUM - Out-of-distribution detection
+# 3. RISK GATES - Exposure limits
+# 4. MEAN-REVERSION SIGNAL - Fade extremes
 # =============================================
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -23,6 +28,93 @@ import os
 from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
+
+# -----------------------------
+# 0. Crisis Detector ("Oh Shit" Gate)
+# -----------------------------
+class CrisisDetector:
+    """
+    Circuit breaker for dangerous market conditions.
+
+    If ANY condition triggers, we sit out completely:
+    - Volatility explosion (ATR > 2.5x normal)
+    - Severe drawdown (> 15% in 30 days)
+    - Crash velocity (> 8% drop in 5 days)
+
+    This protects capital during black swan events (FTX collapse, COVID crash, etc.)
+    """
+
+    def __init__(
+        self,
+        vol_explosion_threshold: float = 2.5,    # ATR > 2.5x median
+        severe_dd_threshold: float = -0.15,      # -15% drawdown
+        crash_velocity_threshold: float = -0.08, # -8% in 5 days
+        lookback_dd: int = 30,                   # Drawdown lookback
+        lookback_vol: int = 90,                  # Volatility baseline lookback
+    ):
+        self.vol_explosion_threshold = vol_explosion_threshold
+        self.severe_dd_threshold = severe_dd_threshold
+        self.crash_velocity_threshold = crash_velocity_threshold
+        self.lookback_dd = lookback_dd
+        self.lookback_vol = lookback_vol
+
+    def compute_atr(self, high, low, close, period=14):
+        """Average True Range - measures volatility"""
+        tr1 = high - low
+        tr2 = abs(high - close.shift(1))
+        tr3 = abs(low - close.shift(1))
+        tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+        return tr.rolling(period).mean()
+
+    def detect(self, df):
+        """
+        Check if we're in crisis mode.
+
+        Returns:
+            (is_crisis, reason_string)
+        """
+        close = df['close'].astype(float)
+        high = df.get('high', close * 1.01).astype(float)
+        low = df.get('low', close * 0.99).astype(float)
+
+        reasons = []
+
+        # 1. Volatility Explosion
+        atr = self.compute_atr(high, low, close, 14)
+        atr_median = atr.rolling(self.lookback_vol).median()
+        if len(atr) > 0 and len(atr_median.dropna()) > 0:
+            current_atr = atr.iloc[-1]
+            median_atr = atr_median.iloc[-1]
+            if pd.notna(current_atr) and pd.notna(median_atr) and median_atr > 0:
+                vol_ratio = current_atr / median_atr
+                if vol_ratio > self.vol_explosion_threshold:
+                    reasons.append(f"Volatility explosion ({vol_ratio:.1f}x normal)")
+
+        # 2. Severe Drawdown
+        if len(close) >= self.lookback_dd:
+            rolling_max = close.rolling(self.lookback_dd).max()
+            drawdown = (close / rolling_max - 1)
+            current_dd = drawdown.iloc[-1]
+            if current_dd < self.severe_dd_threshold:
+                reasons.append(f"Severe drawdown ({current_dd*100:.1f}% in {self.lookback_dd}d)")
+
+        # 3. Crash Velocity (fast drop)
+        if len(close) >= 5:
+            five_day_return = close.iloc[-1] / close.iloc[-5] - 1
+            if five_day_return < self.crash_velocity_threshold:
+                reasons.append(f"Crash velocity ({five_day_return*100:.1f}% in 5d)")
+
+        is_crisis = len(reasons) > 0
+        reason_str = "; ".join(reasons) if reasons else "All clear"
+
+        return is_crisis, reason_str
+
+# Initialize crisis detector (use config values if available, else defaults)
+crisis_detector = CrisisDetector(
+    vol_explosion_threshold=getattr(__import__('config'), 'CRISIS_VOL_THRESHOLD', 2.5),
+    severe_dd_threshold=getattr(__import__('config'), 'CRISIS_DD_THRESHOLD', -0.15),
+    crash_velocity_threshold=getattr(__import__('config'), 'CRISIS_CRASH_THRESHOLD', -0.08),
+)
 
 # -----------------------------
 # 1. Extended Kalman Filter (EKF)
@@ -308,14 +400,27 @@ while True:
         print(f"Funding Rate: {funding:.6f} | 60d Realized Vol: {recent_vol:.2%}")
         print(f"Predicted 1d Return: {pred:.4f} | Hamming Distance: {hamming_dist:.4f}")
         print(f"Current Position: {position:.6f} BTC | Gross Exposure: {gross_exposure:.2%}")
-        
-        # ORDER OF OPERATIONS (no regime filter): EKF → features → FFNN → HyperDUM veto → risk sizing (vol target + Kelly) → exposure cap
+
+        # ORDER OF GATES:
+        # 1. CRISIS DETECTOR - "Oh Shit" gate (volatility explosion, drawdown, crash)
+        # 2. HYPERDUM - Out-of-distribution detection
+        # 3. RISK GATES - Exposure limits
+        # 4. MEAN-REVERSION SIGNAL - Fade extremes
+
+        # CRISIS DETECTOR: "Oh Shit" Gate
+        # Checks for dangerous market conditions that break mean-reversion assumptions
+        is_crisis, crisis_reason = crisis_detector.detect(df)
+
+        if is_crisis:
+            print(f"🚨 CRISIS GATE: {crisis_reason}")
+            print(f"   → NO TRADE (dangerous market conditions - sit out completely)")
+            target = 0.0
         # HYPERDUM GATE: THE SINGLE BIGGEST WIN RATE IMPROVEMENT (49% → 66%+)
         # Detects OOD feature combinations: "I have never seen funding + velocity + momentum
         # behave like this → sit out". These were exactly the days the original model bled.
         # Mean-reversion breaks during structural changes (ETF launches, regulatory shifts).
         # HyperDUM prevents whipsaws by skipping unknown regimes.
-        if hamming_dist > UNCERTAINTY_THRESHOLD:
+        elif hamming_dist > UNCERTAINTY_THRESHOLD:
             print(f"🚫 HYPERDUM GATE: Hamming distance {hamming_dist:.4f} > {UNCERTAINTY_THRESHOLD}")
             print(f"   → NO TRADE (OOD regime detected - feature combination never seen in training)")
             print(f"   → This is why win rate improved from 49% to 66%+")

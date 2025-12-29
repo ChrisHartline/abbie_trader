@@ -36,3 +36,9 @@ MAX_GROSS_EXPOSURE = 0.50            # Maximum gross exposure (50% of capital)
 KELLY_FRACTION = 0.25                # Fractional Kelly multiplier (0.25x = conservative)
                                      # Increase for more aggressive sizing (e.g., 0.5x, 1.0x)
                                      # Backtest with 0.25x Kelly: -18.4% max DD, 3.12 Sharpe, +742.3% return
+
+# Crisis Detector Parameters ("Oh Shit" Gate)
+# Protects capital during black swan events (FTX collapse, COVID crash, etc.)
+CRISIS_VOL_THRESHOLD = 2.5           # ATR > 2.5x median = volatility explosion
+CRISIS_DD_THRESHOLD = -0.15          # -15% drawdown in 30 days = severe drawdown
+CRISIS_CRASH_THRESHOLD = -0.08       # -8% in 5 days = crash velocity
