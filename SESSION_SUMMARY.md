@@ -45,28 +45,32 @@
 
 ## B) What's Been Implemented in Code
 
-### Core Files Modified
+### Trading Systems
 ```
-main.py              - Added Crisis Detector as first gate
-config.py            - Added CRISIS_* threshold parameters
+main_mean.py         - MEAN-REVERSION for crypto (Kraken)
+                       EKF + FFNN + HyperDUM + Crisis Detector
+
+main_trend.py        - TREND-FOLLOWING for stocks (Webull)
+                       EMA crossover + Crisis Detector
 ```
 
-### New Configuration Files
+### Configuration Files
 ```
-config_tsla.py       - Trend-following config for TSLA (HyperDUM disabled)
-config_tsll.py       - 2x ETF config with tighter crisis thresholds
+config.py            - BTC mean-reversion settings
+config_tsla.py       - TSLA trend-following (HyperDUM disabled)
+config_tsll.py       - 2x ETF with tighter crisis thresholds
 ```
 
-### Supporting Files Created
+### Supporting Files
 ```
 regime_classifier.py - CrisisDetector + RegimeClassifier classes
-feature_engineering.py - 14 technical indicators (for experimentation)
+feature_engineering.py - 14 technical indicators (experimental)
 regime_ffnn.py       - Regime-specific FFNN training (experimental)
 train_from_cache.py  - Train from cached data (no API needed)
 test_merged_changes.py - Validation script
 ```
 
-### Current Gate Order (main.py)
+### Gate Order (main_mean.py - Crypto)
 ```
 1. CRISIS DETECTOR → "Oh shit" gate for dangerous markets
 2. HYPERDUM       → Out-of-distribution detection
@@ -165,7 +169,7 @@ python backtest_comprehensive.py
 
 # Step 2: Paper trade on testnet
 # config.py: LIVE = False (default)
-python main.py
+python main_mean.py
 # Runs against Kraken testnet with fake money
 
 # Step 3: Monitor for 2-4 weeks
@@ -176,7 +180,7 @@ python main.py
 # Step 4: Go live (small size)
 # config.py: LIVE = True
 # INITIAL_USD = 100.0  # Start VERY small
-python main.py
+python main_mean.py
 ```
 
 #### Monitoring
@@ -190,44 +194,45 @@ def send_alert(subject, message):
 
 ### Stocks (TSLA) via Webull
 
-#### Current Limitation
-- `main.py` is built for Kraken (crypto)
-- Need to create `main_stocks.py` for Webull
-
-#### Webull Integration Steps
-```python
+#### Prerequisites
+```bash
 # 1. Install Webull SDK
 pip install webull
 
-# 2. Create main_stocks.py with:
-from webull import webull
-
-wb = webull()
-wb.login('email', 'password')
-
-# 3. Modify trading loop:
-# - Replace Kraken API calls with Webull
-# - Use config_tsla.py for parameters
-# - Implement trend-following logic (not mean-reversion)
+# 2. Create .env file
+echo "WEBULL_EMAIL=your_email" > .env
+echo "WEBULL_PASSWORD=your_password" >> .env
+echo "WEBULL_TRADE_PIN=your_pin" >> .env
 ```
 
-#### Key Differences for Stocks
-```python
-# In main_stocks.py:
+#### Testing Sequence
+```bash
+# Step 1: Dry run (no trades executed)
+python main_trend.py --dry-run
+# Uses simulated broker, fetches real prices
 
-# Use trend-following config
-from config_tsla import *
+# Step 2: Paper trade with simulated broker
+python main_trend.py
+# LIVE=False in config_tsla.py (default)
 
-# Skip HyperDUM (not applicable)
-if USE_HYPERDUM and hamming_dist > UNCERTAINTY_THRESHOLD:
-    target = 0.0
+# Step 3: Change config for different assets
+python main_trend.py --config config_tsll
+# Uses 2x ETF settings with tighter crisis thresholds
 
-# Trend signal instead of mean-reversion
-is_bull = ema20 > ema50
-if is_bull:
-    target = KELLY_FRACTION * MAX_GROSS_EXPOSURE
-else:
-    target = 0.0  # Exit
+# Step 4: Go live (requires Webull credentials)
+# config_tsla.py: LIVE = True
+python main_trend.py
+```
+
+#### Key Differences from Crypto
+```
+main_mean.py (Crypto)          main_trend.py (Stocks)
+─────────────────────          ────────────────────────
+EKF + FFNN prediction          EMA crossover signal
+HyperDUM gating (0.35)         No HyperDUM (disabled)
+Mean-reversion (fade)          Trend-following (ride)
+Kraken API                     Webull API
+Long/Short                     Long-only
 ```
 
 ### Deployment Checklist
@@ -253,13 +258,27 @@ else:
 
 ---
 
-## Quick Reference: Which Config for What?
+## Quick Reference
 
-| Asset | Config File | Strategy | Key Settings |
-|-------|-------------|----------|--------------|
-| BTC/Crypto | `config.py` | Mean-Reversion | HyperDUM 0.35, Crisis std |
-| TSLA/Stocks | `config_tsla.py` | Trend-Following | HyperDUM OFF, Crisis std |
-| TSLL/2x ETF | `config_tsll.py` | Trend-Following | HyperDUM OFF, Crisis TIGHT |
+### Which System for What?
+
+| Asset | System | Config | Strategy |
+|-------|--------|--------|----------|
+| BTC/Crypto | `main_mean.py` | `config.py` | Mean-Reversion |
+| TSLA/Stocks | `main_trend.py` | `config_tsla.py` | Trend-Following |
+| TSLL/2x ETF | `main_trend.py` | `config_tsll.py` | Trend-Following (tight crisis) |
+
+### Key Commands
+
+```bash
+# Crypto (Kraken)
+python main_mean.py                    # BTC mean-reversion
+
+# Stocks (Webull)
+python main_trend.py --dry-run         # TSLA dry run
+python main_trend.py                   # TSLA paper trade
+python main_trend.py --config config_tsll  # 2x ETF
+```
 
 ---
 

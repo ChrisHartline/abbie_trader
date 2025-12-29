@@ -1,16 +1,28 @@
-from config import *
+"""
+Q-Prime Mean-Reversion System
+==============================
 
-# =============================================
-# LIVE KRAKEN TESTNET VERSION
-# EKF + FFNN + HyperDUM + Crisis Detector → BTC/USDT spot
-# Runs on fake money first → flip one line for real
-#
-# ORDER OF GATES:
-# 1. CRISIS DETECTOR - "Oh Shit" gate for dangerous markets
-# 2. HYPERDUM - Out-of-distribution detection
-# 3. RISK GATES - Exposure limits
-# 4. MEAN-REVERSION SIGNAL - Fade extremes
-# =============================================
+MEAN-REVERSION for crypto assets (BTC, ETH, funding rate arbitrage)
+
+Strategy:
+- EKF estimates equilibrium level and velocity
+- FFNN predicts reversion based on funding rate + momentum
+- HyperDUM gates out-of-distribution patterns
+- Crisis Detector blocks dangerous market conditions
+
+Gate Order:
+1. CRISIS DETECTOR - "Oh Shit" gate for dangerous markets
+2. HYPERDUM - Out-of-distribution detection (49% → 66%+ win rate)
+3. RISK GATES - Position limits
+4. MEAN-REVERSION SIGNAL - Fade extremes
+
+Usage:
+    python main_mean.py           # Uses config.py (BTC)
+
+Broker: Kraken (crypto)
+"""
+
+from config import *
 
 import numpy as np
 import pandas as pd
