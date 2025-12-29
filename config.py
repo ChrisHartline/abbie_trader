@@ -33,9 +33,11 @@ UNCERTAINTY_THRESHOLD = 0.35         # HyperDUM gate threshold (2023-2024 sweep:
 STABILITY_FAVORABLE = 0.90           # Regime stability cutoff for full sizing (sweep-backed)
 STABILITY_WARNING = 0.75             # Below this, regime filter blocks trading (sweep-backed)
 MAX_GROSS_EXPOSURE = 0.50            # Maximum gross exposure (50% of capital)
-KELLY_FRACTION = 0.25                # Fractional Kelly multiplier (0.25x = conservative)
-                                     # Increase for more aggressive sizing (e.g., 0.5x, 1.0x)
-                                     # Backtest with 0.25x Kelly: -18.4% max DD, 3.12 Sharpe, +742.3% return
+KELLY_FRACTION = 0.50                # Fractional Kelly multiplier
+                                     # 0.25x = conservative (6.8% return, -2.4% DD)
+                                     # 0.50x = moderate (13.9% return, -4.8% DD) ← CURRENT
+                                     # 0.75x = aggressive (21.4% return, -7.1% DD)
+                                     # Sharpe stays ~1.15 across all Kelly values
 
 # Crisis Detector Parameters ("Oh Shit" Gate)
 # Protects capital during black swan events (FTX collapse, COVID crash, etc.)
