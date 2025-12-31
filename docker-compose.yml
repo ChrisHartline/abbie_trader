@@ -1,0 +1,76 @@
+# Q-Prime Trading System - Docker Compose
+#
+# Usage:
+#   docker-compose up btc      # Run BTC mean-reversion
+#   docker-compose up tsla     # Run TSLA trend-following
+#   docker-compose up train    # Train models from cached data
+
+version: '3.8'
+
+services:
+  # BTC Mean-Reversion System (Kraken)
+  btc:
+    build: .
+    container_name: qprime-btc
+    command: python main_mean.py
+    environment:
+      - LIVE=${LIVE:-false}
+      - KRAKEN_KEY=${KRAKEN_KEY}
+      - KRAKEN_SECRET=${KRAKEN_SECRET}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+
+  # TSLA Trend-Following System (Webull)
+  tsla:
+    build: .
+    container_name: qprime-tsla
+    command: python main_trend.py --config config_tsla
+    environment:
+      - LIVE=${LIVE:-false}
+      - WEBULL_EMAIL=${WEBULL_EMAIL}
+      - WEBULL_PASSWORD=${WEBULL_PASSWORD}
+      - WEBULL_TRADE_PIN=${WEBULL_TRADE_PIN}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+
+  # TSLL 2x ETF (tighter crisis thresholds)
+  tsll:
+    build: .
+    container_name: qprime-tsll
+    command: python main_trend.py --config config_tsll
+    environment:
+      - LIVE=${LIVE:-false}
+      - WEBULL_EMAIL=${WEBULL_EMAIL}
+      - WEBULL_PASSWORD=${WEBULL_PASSWORD}
+      - WEBULL_TRADE_PIN=${WEBULL_TRADE_PIN}
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+
+  # Training service (one-time run)
+  train:
+    build: .
+    container_name: qprime-train
+    command: python train_from_cache.py
+    volumes:
+      - ./:/app
+    profiles:
+      - training
+
+  # Backtest service (one-time run)
+  backtest:
+    build: .
+    container_name: qprime-backtest
+    command: python backtest_comprehensive.py
+    volumes:
+      - ./:/app
+    profiles:
+      - testing
