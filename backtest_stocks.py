@@ -15,13 +15,20 @@ Prerequisites: Run train_stock_models.py first to generate model files.
 import sys
 import numpy as np
 import pandas as pd
-import yfinance as yf
 import torch
 import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
+
+# Import unified data provider (supports OpenBB, yfinance, etc.)
+try:
+    from data_provider import get_stock_data, get_vix_data, get_available_providers
+    DATA_PROVIDER_AVAILABLE = True
+except ImportError:
+    DATA_PROVIDER_AVAILABLE = False
+    import yfinance as yf
 
 # Default tickers
 DEFAULT_TICKERS = ['NVDA', 'TSLA']
@@ -107,10 +114,10 @@ def run_ekf(price_series, dt=1.0):
     return level, velocity
 
 # -----------------------------
-# Get VIX data
+# Get VIX data (fallback when data_provider not available)
 # -----------------------------
-def get_vix_data(start_date, end_date, index):
-    """Download VIX data as sentiment proxy"""
+def _get_vix_data_fallback(start_date, end_date, index):
+    """Download VIX data as sentiment proxy (fallback method)"""
     try:
         vix = yf.download("^VIX", start=start_date, end=end_date, interval="1d", progress=False)
         if isinstance(vix.columns, pd.MultiIndex):
@@ -165,30 +172,41 @@ def backtest_ticker(ticker):
         print(f"  Run: python train_stock_models.py {ticker_original}")
         return None
 
-    # Download data
+    # Download data using unified data provider
     print(f"\nDownloading {ticker} data...")
-    df = yf.download(ticker, start=START_DATE, end=None, interval="1d", progress=False)
+    try:
+        if DATA_PROVIDER_AVAILABLE:
+            # Use unified data provider (OpenBB -> yfinance fallback)
+            df = get_stock_data(ticker, start=START_DATE)
+            # Rename Close to close for consistency
+            if 'Close' in df.columns:
+                df = df.rename(columns={'Close': 'close'})
+        else:
+            # Fallback to direct yfinance
+            df = yf.download(ticker, start=START_DATE, end=None, interval="1d", progress=False)
+            # Handle MultiIndex columns
+            if df is not None and len(df) > 0:
+                if isinstance(df.columns, pd.MultiIndex):
+                    df = df['Close']
+                    if isinstance(df, pd.DataFrame):
+                        df = df.iloc[:, 0]
+                elif 'Close' in df.columns:
+                    df = df['Close']
+                elif 'close' in df.columns:
+                    df = df['close']
+                df = pd.DataFrame(df, columns=['close'])
+                df['return'] = np.log(df['close'] / df['close'].shift(1))
+                df = df.dropna()
+    except Exception as e:
+        print(f"  ERROR: Failed to download data for {ticker}: {e}")
+        return None
 
     # Check if download succeeded
     if df is None or len(df) == 0:
-        print(f"  ERROR: Failed to download data for {ticker}. Yahoo Finance returned no data.")
+        print(f"  ERROR: Failed to download data for {ticker}.")
         print(f"  Possible causes: network issues, invalid ticker, or API rate limiting.")
         print(f"  Try again in a few minutes or check your internet connection.")
         return None
-
-    # Handle MultiIndex columns (yfinance sometimes returns this format)
-    if isinstance(df.columns, pd.MultiIndex):
-        df = df['Close']
-        if isinstance(df, pd.DataFrame):
-            df = df.iloc[:, 0]
-    elif 'Close' in df.columns:
-        df = df['Close']
-    elif 'close' in df.columns:
-        df = df['close']
-
-    df = pd.DataFrame(df, columns=['close'])
-    df['return'] = np.log(df['close'] / df['close'].shift(1))
-    df = df.dropna()
 
     if len(df) < 100:
         print(f"  ERROR: Insufficient data for {ticker} (only {len(df)} days). Need at least 100 days.")
@@ -203,7 +221,10 @@ def backtest_ticker(ticker):
                         0.0002 * np.sin(np.arange(len(df)) * 2 * np.pi / 180))
         df['sentiment'] = funding + 0.0001 * np.random.randn(len(df))
     else:
-        df['sentiment'] = get_vix_data(START_DATE, None, df.index)
+        if DATA_PROVIDER_AVAILABLE:
+            df['sentiment'] = get_vix_data(start=START_DATE, index=df.index)
+        else:
+            df['sentiment'] = _get_vix_data_fallback(START_DATE, None, df.index)
 
     # Initialize backtest
     cash = INITIAL_USD

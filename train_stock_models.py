@@ -16,7 +16,6 @@ Generates: {ticker}_model.pth, {ticker}_scaler.pth, {ticker}_projector.npy, {tic
 import sys
 import numpy as np
 import pandas as pd
-import yfinance as yf
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -24,6 +23,16 @@ from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
+
+# Import unified data provider (supports OpenBB, yfinance, etc.)
+try:
+    from data_provider import get_stock_data, get_vix_data, get_available_providers
+    DATA_PROVIDER_AVAILABLE = True
+    print(f"Data providers available: {get_available_providers()}")
+except ImportError:
+    DATA_PROVIDER_AVAILABLE = False
+    import yfinance as yf
+    print("Using yfinance directly (install openbb for better data access)")
 
 # Default tickers if none specified
 DEFAULT_TICKERS = ['NVDA', 'TSLA']
@@ -114,10 +123,10 @@ class FFNN(nn.Module):
         return self.net(x)
 
 # -----------------------------
-# 3. Download VIX data (for stocks)
+# 3. Download VIX data (for stocks) - fallback when data_provider not available
 # -----------------------------
-def get_vix_data(start_date, end_date, index):
-    """Download VIX data as sentiment proxy for stocks"""
+def _get_vix_data_fallback(start_date, end_date, index):
+    """Download VIX data as sentiment proxy for stocks (fallback method)"""
     print("  Downloading VIX data as sentiment proxy...")
     try:
         vix = yf.download("^VIX", start=start_date, end=end_date, interval="1d", progress=False)
@@ -159,47 +168,48 @@ def train_ticker(ticker):
     elif ticker.upper() == 'ETH':
         ticker = 'ETH-USD'
 
-    # Download data
+    # Download data using unified data provider
     print(f"Downloading {ticker} data...")
     try:
-        df = yf.download(ticker, start=START_DATE, end=None, interval=TIMEFRAME, progress=False)
+        if DATA_PROVIDER_AVAILABLE:
+            # Use unified data provider (OpenBB -> yfinance fallback)
+            df = get_stock_data(ticker, start=START_DATE)
+        else:
+            # Fallback to direct yfinance
+            df = yf.download(ticker, start=START_DATE, end=None, interval=TIMEFRAME, progress=False)
+            if df is not None and len(df) > 0:
+                # Handle MultiIndex columns
+                if isinstance(df.columns, pd.MultiIndex):
+                    df = df.xs('Close', axis=1, level=0, drop_level=False)
+                    if isinstance(df.columns, pd.MultiIndex):
+                        df.columns = df.columns.get_level_values(-1)
+                # Ensure Close column
+                if len(df.columns) == 1:
+                    df.columns = ['Close']
+                elif 'Close' not in df.columns:
+                    close_col = [c for c in df.columns if 'close' in str(c).lower()]
+                    if close_col:
+                        df = df[[close_col[0]]]
+                        df.columns = ['Close']
+                # Add returns
+                df['return'] = np.log(df['Close'] / df['Close'].shift(1))
+                df = df.dropna()
     except Exception as e:
         print(f"  Error downloading {ticker}: {e}")
         return False
 
     # Check if download succeeded
     if df is None or len(df) == 0:
-        print(f"  ERROR: Failed to download data for {ticker}. Yahoo Finance returned no data.")
+        print(f"  ERROR: Failed to download data for {ticker}.")
         print(f"  Possible causes: network issues, invalid ticker, or API rate limiting.")
         print(f"  Try again in a few minutes or check your internet connection.")
         return False
 
-    # Handle MultiIndex columns (yfinance sometimes returns this format)
-    if isinstance(df.columns, pd.MultiIndex):
-        df = df.xs('Close', axis=1, level=0, drop_level=False)
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(-1)
-
-    # Ensure we have Close column
-    if len(df.columns) == 1:
-        df.columns = ['Close']
-    elif 'Close' not in df.columns:
-        close_col = [c for c in df.columns if 'close' in str(c).lower()]
-        if close_col:
-            df = df[[close_col[0]]]
-            df.columns = ['Close']
-        else:
-            print(f"  Error: Could not find 'Close' column for {ticker}")
-            return False
-
-    if df.empty or len(df) < 100:
+    if len(df) < 100:
         print(f"  Error: Insufficient data for {ticker} (got {len(df)} rows). Need at least 100 days.")
         return False
 
     print(f"  Downloaded {len(df)} periods from {df.index[0]:%Y-%m-%d} to {df.index[-1]:%Y-%m-%d}")
-
-    # Calculate returns
-    df['return'] = np.log(df['Close'] / df['Close'].shift(1))
 
     # Get sentiment proxy
     if is_crypto:
@@ -211,7 +221,10 @@ def train_ticker(ticker):
         df['sentiment'] = funding + 0.0001 * np.random.randn(len(df))
     else:
         # Use VIX as sentiment proxy for stocks
-        df['sentiment'] = get_vix_data(START_DATE, None, df.index)
+        if DATA_PROVIDER_AVAILABLE:
+            df['sentiment'] = get_vix_data(start=START_DATE, index=df.index)
+        else:
+            df['sentiment'] = _get_vix_data_fallback(START_DATE, None, df.index)
 
     df = df.dropna()
 
