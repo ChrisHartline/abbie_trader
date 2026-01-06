@@ -1,0 +1,117 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="400">
+<style>text{font-family:Arial,sans-serif;font-size:12px}</style>
+<rect x="0" y="0" width="533" height="400" fill="#fafafa" stroke="#ddd"/>
+<text x="266.5" y="20" text-anchor="middle" font-size="14" font-weight="bold">Hit Rate</text>
+<line x1="60" y1="360" x2="473" y2="360" stroke="#000"/>
+<line x1="60" y1="40" x2="60" y2="360" stroke="#000"/>
+<text x="266.5" y="392" text-anchor="middle">HyperDUM Threshold</text>
+<text x="12" y="30" text-anchor="start">%</text>
+<circle cx="60.0" cy="360.0" r="3" fill="#1f77b4"/>
+<circle cx="142.59999999999997" cy="343.05882352941177" r="3" fill="#1f77b4"/>
+<circle cx="225.20000000000002" cy="314.8235294117647" r="3" fill="#1f77b4"/>
+<circle cx="307.79999999999995" cy="286.5882352941177" r="3" fill="#1f77b4"/>
+<circle cx="390.3999999999999" cy="216.94117647058826" r="3" fill="#1f77b4"/>
+<circle cx="473.0" cy="40.0" r="3" fill="#1f77b4"/>
+<polyline fill="none" stroke="#1f77b4" stroke-width="2" points="60.0,360.0 142.59999999999997,343.05882352941177 225.20000000000002,314.8235294117647 307.79999999999995,286.5882352941177 390.3999999999999,216.94117647058826 473.0,40.0"/>
+<text x="483" y="55" text-anchor="start" fill="#1f77b4">Stability ≥ 0.80</text>
+<circle cx="60.0" cy="360.0" r="3" fill="#ff7f0e"/>
+<circle cx="142.59999999999997" cy="343.05882352941177" r="3" fill="#ff7f0e"/>
+<circle cx="225.20000000000002" cy="314.8235294117647" r="3" fill="#ff7f0e"/>
+<circle cx="307.79999999999995" cy="286.5882352941177" r="3" fill="#ff7f0e"/>
+<circle cx="390.3999999999999" cy="216.94117647058826" r="3" fill="#ff7f0e"/>
+<circle cx="473.0" cy="40.0" r="3" fill="#ff7f0e"/>
+<polyline fill="none" stroke="#ff7f0e" stroke-width="2" points="60.0,360.0 142.59999999999997,343.05882352941177 225.20000000000002,314.8235294117647 307.79999999999995,286.5882352941177 390.3999999999999,216.94117647058826 473.0,40.0"/>
+<text x="483" y="70" text-anchor="start" fill="#ff7f0e">Stability ≥ 0.85</text>
+<circle cx="60.0" cy="360.0" r="3" fill="#2ca02c"/>
+<circle cx="142.59999999999997" cy="343.05882352941177" r="3" fill="#2ca02c"/>
+<circle cx="225.20000000000002" cy="314.8235294117647" r="3" fill="#2ca02c"/>
+<circle cx="307.79999999999995" cy="286.5882352941177" r="3" fill="#2ca02c"/>
+<circle cx="390.3999999999999" cy="216.94117647058826" r="3" fill="#2ca02c"/>
+<circle cx="473.0" cy="40.0" r="3" fill="#2ca02c"/>
+<polyline fill="none" stroke="#2ca02c" stroke-width="2" points="60.0,360.0 142.59999999999997,343.05882352941177 225.20000000000002,314.8235294117647 307.79999999999995,286.5882352941177 390.3999999999999,216.94117647058826 473.0,40.0"/>
+<text x="483" y="85" text-anchor="start" fill="#2ca02c">Stability ≥ 0.90</text>
+<circle cx="60.0" cy="360.0" r="3" fill="#d62728"/>
+<circle cx="142.59999999999997" cy="343.05882352941177" r="3" fill="#d62728"/>
+<circle cx="225.20000000000002" cy="314.8235294117647" r="3" fill="#d62728"/>
+<circle cx="307.79999999999995" cy="286.5882352941177" r="3" fill="#d62728"/>
+<circle cx="390.3999999999999" cy="216.94117647058826" r="3" fill="#d62728"/>
+<circle cx="473.0" cy="40.0" r="3" fill="#d62728"/>
+<polyline fill="none" stroke="#d62728" stroke-width="2" points="60.0,360.0 142.59999999999997,343.05882352941177 225.20000000000002,314.8235294117647 307.79999999999995,286.5882352941177 390.3999999999999,216.94117647058826 473.0,40.0"/>
+<text x="483" y="100" text-anchor="start" fill="#d62728">Stability ≥ 0.95</text>
+<rect x="533" y="0" width="533" height="400" fill="#fafafa" stroke="#ddd"/>
+<text x="799.5" y="20" text-anchor="middle" font-size="14" font-weight="bold">PnL (Total Return)</text>
+<line x1="593" y1="360" x2="1006" y2="360" stroke="#000"/>
+<line x1="593" y1="40" x2="593" y2="360" stroke="#000"/>
+<text x="799.5" y="392" text-anchor="middle">HyperDUM Threshold</text>
+<text x="545" y="30" text-anchor="start">%</text>
+<circle cx="593.0" cy="70.35981661632059" r="3" fill="#1f77b4"/>
+<circle cx="675.5999999999999" cy="40.36503153020902" r="3" fill="#1f77b4"/>
+<circle cx="758.2" cy="51.919266888984964" r="3" fill="#1f77b4"/>
+<circle cx="840.8" cy="93.07092780385955" r="3" fill="#1f77b4"/>
+<circle cx="923.3999999999999" cy="216.56205672472768" r="3" fill="#1f77b4"/>
+<circle cx="1006.0" cy="358.60272708264324" r="3" fill="#1f77b4"/>
+<polyline fill="none" stroke="#1f77b4" stroke-width="2" points="593.0,70.35981661632059 675.5999999999999,40.36503153020902 758.2,51.919266888984964 840.8,93.07092780385955 923.3999999999999,216.56205672472768 1006.0,358.60272708264324"/>
+<text x="1016" y="55" text-anchor="start" fill="#1f77b4">Stability ≥ 0.80</text>
+<circle cx="593.0" cy="70.35981661632059" r="3" fill="#ff7f0e"/>
+<circle cx="675.5999999999999" cy="40.36503153020902" r="3" fill="#ff7f0e"/>
+<circle cx="758.2" cy="51.919266888984964" r="3" fill="#ff7f0e"/>
+<circle cx="840.8" cy="93.07092780385955" r="3" fill="#ff7f0e"/>
+<circle cx="923.3999999999999" cy="216.56205672472768" r="3" fill="#ff7f0e"/>
+<circle cx="1006.0" cy="358.60272708264324" r="3" fill="#ff7f0e"/>
+<polyline fill="none" stroke="#ff7f0e" stroke-width="2" points="593.0,70.35981661632059 675.5999999999999,40.36503153020902 758.2,51.919266888984964 840.8,93.07092780385955 923.3999999999999,216.56205672472768 1006.0,358.60272708264324"/>
+<text x="1016" y="70" text-anchor="start" fill="#ff7f0e">Stability ≥ 0.85</text>
+<circle cx="593.0" cy="70.35981661632059" r="3" fill="#2ca02c"/>
+<circle cx="675.5999999999999" cy="40.36503153020902" r="3" fill="#2ca02c"/>
+<circle cx="758.2" cy="51.919266888984964" r="3" fill="#2ca02c"/>
+<circle cx="840.8" cy="93.07092780385955" r="3" fill="#2ca02c"/>
+<circle cx="923.3999999999999" cy="216.56205672472768" r="3" fill="#2ca02c"/>
+<circle cx="1006.0" cy="360.0" r="3" fill="#2ca02c"/>
+<polyline fill="none" stroke="#2ca02c" stroke-width="2" points="593.0,70.35981661632059 675.5999999999999,40.36503153020902 758.2,51.919266888984964 840.8,93.07092780385955 923.3999999999999,216.56205672472768 1006.0,360.0"/>
+<text x="1016" y="85" text-anchor="start" fill="#2ca02c">Stability ≥ 0.90</text>
+<circle cx="593.0" cy="70.35981661632059" r="3" fill="#d62728"/>
+<circle cx="675.5999999999999" cy="40.0" r="3" fill="#d62728"/>
+<circle cx="758.2" cy="52.30503348351351" r="3" fill="#d62728"/>
+<circle cx="840.8" cy="95.70129997468172" r="3" fill="#d62728"/>
+<circle cx="923.3999999999999" cy="219.1464352714636" r="3" fill="#d62728"/>
+<circle cx="1006.0" cy="357.8532834911973" r="3" fill="#d62728"/>
+<polyline fill="none" stroke="#d62728" stroke-width="2" points="593.0,70.35981661632059 675.5999999999999,40.0 758.2,52.30503348351351 840.8,95.70129997468172 923.3999999999999,219.1464352714636 1006.0,357.8532834911973"/>
+<text x="1016" y="100" text-anchor="start" fill="#d62728">Stability ≥ 0.95</text>
+<rect x="1066" y="0" width="533" height="400" fill="#fafafa" stroke="#ddd"/>
+<text x="1332.5" y="20" text-anchor="middle" font-size="14" font-weight="bold">Max Drawdown</text>
+<line x1="1126" y1="360" x2="1539" y2="360" stroke="#000"/>
+<line x1="1126" y1="40" x2="1126" y2="360" stroke="#000"/>
+<text x="1332.5" y="392" text-anchor="middle">HyperDUM Threshold</text>
+<text x="1078" y="30" text-anchor="start">%</text>
+<circle cx="1126.0" cy="40.0" r="3" fill="#1f77b4"/>
+<circle cx="1208.6" cy="50.61399209506777" r="3" fill="#1f77b4"/>
+<circle cx="1291.2" cy="85.73005005509754" r="3" fill="#1f77b4"/>
+<circle cx="1373.8" cy="130.59291252568457" r="3" fill="#1f77b4"/>
+<circle cx="1456.3999999999999" cy="235.0687728806181" r="3" fill="#1f77b4"/>
+<circle cx="1539.0" cy="357.1733549509483" r="3" fill="#1f77b4"/>
+<polyline fill="none" stroke="#1f77b4" stroke-width="2" points="1126.0,40.0 1208.6,50.61399209506777 1291.2,85.73005005509754 1373.8,130.59291252568457 1456.3999999999999,235.0687728806181 1539.0,357.1733549509483"/>
+<text x="1549" y="55" text-anchor="start" fill="#1f77b4">Stability ≥ 0.80</text>
+<circle cx="1126.0" cy="40.0" r="3" fill="#ff7f0e"/>
+<circle cx="1208.6" cy="50.61399209506777" r="3" fill="#ff7f0e"/>
+<circle cx="1291.2" cy="85.73005005509754" r="3" fill="#ff7f0e"/>
+<circle cx="1373.8" cy="130.59291252568457" r="3" fill="#ff7f0e"/>
+<circle cx="1456.3999999999999" cy="235.0687728806181" r="3" fill="#ff7f0e"/>
+<circle cx="1539.0" cy="357.1733549509483" r="3" fill="#ff7f0e"/>
+<polyline fill="none" stroke="#ff7f0e" stroke-width="2" points="1126.0,40.0 1208.6,50.61399209506777 1291.2,85.73005005509754 1373.8,130.59291252568457 1456.3999999999999,235.0687728806181 1539.0,357.1733549509483"/>
+<text x="1549" y="70" text-anchor="start" fill="#ff7f0e">Stability ≥ 0.85</text>
+<circle cx="1126.0" cy="40.0" r="3" fill="#2ca02c"/>
+<circle cx="1208.6" cy="50.61399209506777" r="3" fill="#2ca02c"/>
+<circle cx="1291.2" cy="85.73005005509754" r="3" fill="#2ca02c"/>
+<circle cx="1373.8" cy="130.59291252568457" r="3" fill="#2ca02c"/>
+<circle cx="1456.3999999999999" cy="235.0687728806181" r="3" fill="#2ca02c"/>
+<circle cx="1539.0" cy="360.0" r="3" fill="#2ca02c"/>
+<polyline fill="none" stroke="#2ca02c" stroke-width="2" points="1126.0,40.0 1208.6,50.61399209506777 1291.2,85.73005005509754 1373.8,130.59291252568457 1456.3999999999999,235.0687728806181 1539.0,360.0"/>
+<text x="1549" y="85" text-anchor="start" fill="#2ca02c">Stability ≥ 0.90</text>
+<circle cx="1126.0" cy="40.0" r="3" fill="#d62728"/>
+<circle cx="1208.6" cy="47.56413417203487" r="3" fill="#d62728"/>
+<circle cx="1291.2" cy="85.73005005509782" r="3" fill="#d62728"/>
+<circle cx="1373.8" cy="130.59291252568505" r="3" fill="#d62728"/>
+<circle cx="1456.3999999999999" cy="236.26003356406218" r="3" fill="#d62728"/>
+<circle cx="1539.0" cy="356.97005042498137" r="3" fill="#d62728"/>
+<polyline fill="none" stroke="#d62728" stroke-width="2" points="1126.0,40.0 1208.6,47.56413417203487 1291.2,85.73005005509782 1373.8,130.59291252568505 1456.3999999999999,236.26003356406218 1539.0,356.97005042498137"/>
+<text x="1549" y="100" text-anchor="start" fill="#d62728">Stability ≥ 0.95</text>
+</svg>

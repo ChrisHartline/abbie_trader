@@ -83,7 +83,8 @@ python main.py
 Edit `config.py`:
 - `LIVE`: Set to `True` for production (default: `False` for testnet)
 - `VOL_TARGET`: Volatility target (default: 0.20 = 20%)
-- `UNCERTAINTY_THRESHOLD`: HyperDUM gate threshold (default: 0.385)
+- `UNCERTAINTY_THRESHOLD`: HyperDUM gate threshold (default: 0.35)
+- `STABILITY_FAVORABLE` / `STABILITY_WARNING`: Regime stability cutoffs for full sizing vs. shutdown (defaults: 0.90 / 0.75)
 - `MAX_GROSS_EXPOSURE`: Maximum gross exposure limit (default: 0.50 = 50%)
 - `KELLY_FRACTION`: Fractional Kelly multiplier (default: 0.25 = conservative)
   - `0.25x`: Conservative (observed ~18% max drawdown)
@@ -93,7 +94,7 @@ Edit `config.py`:
 ## Risk Rules
 
 **Never violated:**
-1. HyperDUM gate: Hamming distance > 0.385 → NO TRADE
+1. HyperDUM gate: Hamming distance > 0.35 → NO TRADE
 2. Gross exposure: Never exceed 50% of capital
 3. Volatility targeting: Position size scaled by 60-day realized vol
 4. Fractional Kelly: Uses 0.25x Kelly for conservative sizing
@@ -123,7 +124,7 @@ When Q-Prime makes trading decisions, it reports:
 
 2. **FFNN predicts reversion**: Learns that high funding rates, momentum exhaustion, and relative price extremes predict mean-reversion.
 
-3. **HyperDUM avoids regime breaks**: When Hamming distance > 0.385, the market structure has changed (e.g., ETF launch, regulatory shift). Model sits out to avoid whipsaws.
+3. **HyperDUM avoids regime breaks**: When Hamming distance > 0.35, the market structure has changed (e.g., ETF launch, regulatory shift). Model sits out to avoid whipsaws.
 
 4. **Fade strategy**: 
    - Long when price is below equilibrium (negative velocity, low relative price)
@@ -151,4 +152,3 @@ When Q-Prime makes trading decisions, it reports:
 - **HyperDUM gate** is the single biggest win rate improvement (49% → 66%+)
 - **Optimized for mean-reversion**: Works best on assets with clear reversion drivers
 - *Note: Backtest results are from Grok's analysis and may not be 100% accurate. Live performance will vary.*
-

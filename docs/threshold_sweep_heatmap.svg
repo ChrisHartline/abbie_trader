@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="620" height="280">
+<style>text{font-family:Arial,sans-serif;font-size:12px}</style>
+<text x="310.0" y="20" text-anchor="middle" font-size="16" font-weight="bold">Total Return Heatmap (%)</text>
+<rect x="100" y="40" width="80" height="40" fill="rgb(235,209,41)" stroke="#fff"/>
+<text x="140.0" y="64.0" text-anchor="middle" fill="#000">6.8</text>
+<rect x="180" y="40" width="80" height="40" fill="rgb(252,230,37)" stroke="#fff"/>
+<text x="220.0" y="64.0" text-anchor="middle" fill="#000">9.4</text>
+<rect x="260" y="40" width="80" height="40" fill="rgb(246,222,38)" stroke="#fff"/>
+<text x="300.0" y="64.0" text-anchor="middle" fill="#000">8.4</text>
+<rect x="340" y="40" width="80" height="40" fill="rgb(222,192,44)" stroke="#fff"/>
+<text x="380.0" y="64.0" text-anchor="middle" fill="#000">4.7</text>
+<rect x="420" y="40" width="80" height="40" fill="rgb(150,104,62)" stroke="#fff"/>
+<text x="460.0" y="64.0" text-anchor="middle" fill="#000">-6.2</text>
+<rect x="500" y="40" width="80" height="40" fill="rgb(68,2,83)" stroke="#fff"/>
+<text x="540.0" y="64.0" text-anchor="middle" fill="#000">-18.8</text>
+<rect x="100" y="80" width="80" height="40" fill="rgb(235,209,41)" stroke="#fff"/>
+<text x="140.0" y="104.0" text-anchor="middle" fill="#000">6.8</text>
+<rect x="180" y="80" width="80" height="40" fill="rgb(252,230,37)" stroke="#fff"/>
+<text x="220.0" y="104.0" text-anchor="middle" fill="#000">9.4</text>
+<rect x="260" y="80" width="80" height="40" fill="rgb(246,222,38)" stroke="#fff"/>
+<text x="300.0" y="104.0" text-anchor="middle" fill="#000">8.4</text>
+<rect x="340" y="80" width="80" height="40" fill="rgb(222,192,44)" stroke="#fff"/>
+<text x="380.0" y="104.0" text-anchor="middle" fill="#000">4.7</text>
+<rect x="420" y="80" width="80" height="40" fill="rgb(150,104,62)" stroke="#fff"/>
+<text x="460.0" y="104.0" text-anchor="middle" fill="#000">-6.2</text>
+<rect x="500" y="80" width="80" height="40" fill="rgb(68,2,83)" stroke="#fff"/>
+<text x="540.0" y="104.0" text-anchor="middle" fill="#000">-18.8</text>
+<rect x="100" y="120" width="80" height="40" fill="rgb(235,209,41)" stroke="#fff"/>
+<text x="140.0" y="144.0" text-anchor="middle" fill="#000">6.8</text>
+<rect x="180" y="120" width="80" height="40" fill="rgb(252,230,37)" stroke="#fff"/>
+<text x="220.0" y="144.0" text-anchor="middle" fill="#000">9.4</text>
+<rect x="260" y="120" width="80" height="40" fill="rgb(246,222,38)" stroke="#fff"/>
+<text x="300.0" y="144.0" text-anchor="middle" fill="#000">8.4</text>
+<rect x="340" y="120" width="80" height="40" fill="rgb(222,192,44)" stroke="#fff"/>
+<text x="380.0" y="144.0" text-anchor="middle" fill="#000">4.7</text>
+<rect x="420" y="120" width="80" height="40" fill="rgb(150,104,62)" stroke="#fff"/>
+<text x="460.0" y="144.0" text-anchor="middle" fill="#000">-6.2</text>
+<rect x="500" y="120" width="80" height="40" fill="rgb(68,1,84)" stroke="#fff"/>
+<text x="540.0" y="144.0" text-anchor="middle" fill="#000">-18.9</text>
+<rect x="100" y="160" width="80" height="40" fill="rgb(235,209,41)" stroke="#fff"/>
+<text x="140.0" y="184.0" text-anchor="middle" fill="#000">6.8</text>
+<rect x="180" y="160" width="80" height="40" fill="rgb(253,231,37)" stroke="#fff"/>
+<text x="220.0" y="184.0" text-anchor="middle" fill="#000">9.5</text>
+<rect x="260" y="160" width="80" height="40" fill="rgb(245,222,38)" stroke="#fff"/>
+<text x="300.0" y="184.0" text-anchor="middle" fill="#000">8.4</text>
+<rect x="340" y="160" width="80" height="40" fill="rgb(220,190,45)" stroke="#fff"/>
+<text x="380.0" y="184.0" text-anchor="middle" fill="#000">4.5</text>
+<rect x="420" y="160" width="80" height="40" fill="rgb(149,102,63)" stroke="#fff"/>
+<text x="460.0" y="184.0" text-anchor="middle" fill="#000">-6.4</text>
+<rect x="500" y="160" width="80" height="40" fill="rgb(69,2,83)" stroke="#fff"/>
+<text x="540.0" y="184.0" text-anchor="middle" fill="#000">-18.7</text>
+<text x="140.0" y="220" text-anchor="middle" transform="rotate(45 140.0,220)">0.30</text>
+<text x="220.0" y="220" text-anchor="middle" transform="rotate(45 220.0,220)">0.35</text>
+<text x="300.0" y="220" text-anchor="middle" transform="rotate(45 300.0,220)">0.40</text>
+<text x="380.0" y="220" text-anchor="middle" transform="rotate(45 380.0,220)">0.45</text>
+<text x="460.0" y="220" text-anchor="middle" transform="rotate(45 460.0,220)">0.50</text>
+<text x="540.0" y="220" text-anchor="middle" transform="rotate(45 540.0,220)">0.55</text>
+<text x="80" y="64.0" text-anchor="end">0.80</text>
+<text x="80" y="104.0" text-anchor="end">0.85</text>
+<text x="80" y="144.0" text-anchor="end">0.90</text>
+<text x="80" y="184.0" text-anchor="end">0.95</text>
+<text x="310.0" y="270" text-anchor="middle">HyperDUM Threshold</text>
+<text x="30" y="140.0" text-anchor="middle" transform="rotate(-90 30,140.0)">Stability Cutoff</text>
+</svg>

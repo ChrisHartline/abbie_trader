@@ -309,6 +309,7 @@ while True:
         print(f"Predicted 1d Return: {pred:.4f} | Hamming Distance: {hamming_dist:.4f}")
         print(f"Current Position: {position:.6f} BTC | Gross Exposure: {gross_exposure:.2%}")
         
+        # ORDER OF OPERATIONS (no regime filter): EKF → features → FFNN → HyperDUM veto → risk sizing (vol target + Kelly) → exposure cap
         # HYPERDUM GATE: THE SINGLE BIGGEST WIN RATE IMPROVEMENT (49% → 66%+)
         # Detects OOD feature combinations: "I have never seen funding + velocity + momentum
         # behave like this → sit out". These were exactly the days the original model bled.

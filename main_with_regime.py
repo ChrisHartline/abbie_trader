@@ -137,51 +137,72 @@ def detect_regime_stability(trend_regime, vol_regime, window=20):
     stability = (trend_stability + vol_stability) / 2
     return stability
 
-def check_regime_status(prices):
+def check_regime_status(prices, level, velocity, funding_rate, momentum, realized_vol, hyperdum_distance=None):
     """
-    Check current market regime and return trading status
+    Determine market regime using EKF states, volatility, funding, momentum,
+    and HyperDUM distance as a stability proxy.
 
     Returns:
-        status: "FAVORABLE", "CAUTION", "WARNING"
+        status: "FAVORABLE", "CAUTION", "WARNING", "NEUTRAL"
         multiplier: Position size multiplier (0.0 - 1.0)
         details: Dictionary with regime metrics
     """
-    # Detect regimes
     trend_regime, trend_strength = detect_trend_regime(prices)
     vol_regime, volatility = detect_volatility_regime(prices)
     stability = detect_regime_stability(trend_regime, vol_regime)
 
-    # Get current values (last in series)
     current_trend = trend_regime.iloc[-1]
     current_vol = vol_regime.iloc[-1]
     current_stability = stability.iloc[-1]
     current_trend_strength = trend_strength.iloc[-1]
     current_volatility = volatility.iloc[-1]
 
-    # Determine status and position multiplier
-    if current_trend == 0 and current_stability > 0.7:
-        # FAVORABLE: Mean-reverting regime with high stability
-        status = "FAVORABLE"
-        multiplier = 1.0  # Full position size
-    elif current_trend == 1 and current_stability > 0.7:
-        # CAUTION: Trending regime but stable
-        status = "CAUTION"
-        multiplier = 0.5  # Half position size
-    elif current_stability < 0.5:
-        # WARNING: Unstable regime (transitioning)
+    # Feature-derived context
+    level_gap = (prices.iloc[-1] - level) / max(abs(level), 1e-8)
+    velocity_norm = velocity / max(abs(level), 1e-8)
+
+    # HyperDUM and realized vol dampen stability when unfamiliar or turbulent
+    stability_score = current_stability
+    if hyperdum_distance is not None and UNCERTAINTY_THRESHOLD > 0:
+        stability_score *= max(0.0, 1 - 0.5 * (hyperdum_distance / UNCERTAINTY_THRESHOLD))
+
+    vol_penalty = max(0.0, 1 - max((realized_vol - VOL_TARGET), 0) / max(VOL_TARGET, 1e-8) * 0.35)
+    stability_score *= vol_penalty
+
+    # Strong velocity away from equilibrium hints at trending regimes
+    velocity_penalty = max(0.0, 1 - min(abs(velocity_norm) * 50, 0.35))
+    stability_score *= velocity_penalty
+
+    # Baseline regime label
+    if stability_score < STABILITY_WARNING:
         status = "WARNING"
-        multiplier = 0.0  # No trading
+        multiplier = 0.0
+    elif current_trend == 1 or abs(velocity_norm) > 0.0015:
+        status = "CAUTION"
+        multiplier = 0.5
+    elif stability_score > STABILITY_FAVORABLE:
+        status = "FAVORABLE"
+        multiplier = 1.0
     else:
-        # NEUTRAL: Mixed conditions
         status = "NEUTRAL"
-        multiplier = 0.75  # Reduced position size
+        multiplier = 0.75
+
+    # Funding and momentum tilt sizing slightly (but stay within [0,1])
+    funding_tilt = np.clip(1 + np.tanh(funding_rate * 50) * 0.10, 0.75, 1.25)
+    momentum_tilt = np.clip(1 + np.tanh(momentum * 100) * 0.10, 0.75, 1.25)
+    multiplier = float(np.clip(multiplier * funding_tilt * momentum_tilt, 0.0, 1.0))
 
     details = {
         'trend_regime': 'TRENDING' if current_trend == 1 else 'MEAN-REVERTING',
         'vol_regime': 'HIGH-VOL' if current_vol == 1 else 'LOW-VOL',
-        'stability': current_stability,
+        'stability': stability_score,
         'trend_strength': current_trend_strength,
-        'volatility': current_volatility
+        'volatility': current_volatility,
+        'level_gap': level_gap,
+        'velocity_norm': velocity_norm,
+        'funding_rate': funding_rate,
+        'momentum': momentum,
+        'hyperdum_distance': hyperdum_distance
     }
 
     return status, multiplier, details
@@ -370,36 +391,7 @@ while True:
         price = df['close'].iloc[-1]
         last_price = price
 
-        # ============================================
-        # REGIME DETECTION CHECK (NEW!)
-        # ============================================
-        print(f"\n{'─'*80}")
-        print(f"📊 REGIME ANALYSIS")
-        print(f"{'─'*80}")
-        regime_status, regime_multiplier, regime_details = check_regime_status(df['close'])
-
-        print(f"Regime Status:    {regime_status}")
-        print(f"Trend:            {regime_details['trend_regime']}")
-        print(f"Volatility:       {regime_details['vol_regime']}")
-        print(f"Stability:        {regime_details['stability']:.2%}")
-        print(f"Trend Strength:   {regime_details['trend_strength']:.4f}")
-        print(f"Volatility Level: {regime_details['volatility']:.2%}")
-        print(f"Position Mult:    {regime_multiplier:.0%}")
-
-        if regime_status == "FAVORABLE":
-            print("✅ FAVORABLE: Mean-reverting regime with high stability")
-            print("   → Strategy: Full position sizing enabled")
-        elif regime_status == "CAUTION":
-            print("⚠️  CAUTION: Trending regime detected")
-            print("   → Strategy: Position size reduced to 50%")
-        elif regime_status == "WARNING":
-            print("🛑 WARNING: Unstable regime (transitioning)")
-            print("   → Strategy: Trading disabled - regime unstable")
-        else:
-            print("ℹ️  NEUTRAL: Mixed conditions")
-            print("   → Strategy: Position size reduced to 75%")
-
-        # Run EKF to get level and velocity
+        # Run EKF to get level and velocity (first step in the gate order)
         print(f"\n{'─'*80}")
         print(f"🔧 EKF & FEATURE ANALYSIS")
         print(f"{'─'*80}")
@@ -407,31 +399,40 @@ while True:
         level = level_series.iloc[-1]
         velocity = velocity_series.iloc[-1]
 
-        # Get funding rate
+        # Funding and momentum features
         funding = get_funding_rate()
-
-        # Calculate features
         df['return'] = np.log(df['close'] / df['close'].shift(1))
-        recent_ret = df['return'].iloc[-5:].mean() if len(df) >= 5 else 0.0
+        momentum = df['return'].iloc[-5:].mean() if len(df) >= 5 else 0.0
         rel_price = price / df['close'].iloc[-30:].mean() - 1 if len(df) >= 30 else 0.0
 
         # Build feature vector (same as training)
-        feat = np.array([[level, velocity, funding, recent_ret, rel_price]])
+        feat = np.array([[level, velocity, funding, momentum, rel_price]])
         feat_s = scaler.transform(feat)
 
-        # FFNN prediction
+        # FFNN prediction (after EKF + feature prep)
         with torch.no_grad():
             pred = model(torch.FloatTensor(feat_s).to(device)).item()
 
-        # HyperDUM uncertainty check
+        # HyperDUM uncertainty check (veto before regime sizing)
         projected = np.sign(feat_s @ projector)
         hamming_dist = np.mean(projected != memory_vector)
 
-        # Calculate realized volatility (60-day annualized)
+        # Calculate realized volatility (60-day annualized) for risk sizing
         recent_vol = df['return'].iloc[-60:].std() * np.sqrt(252) if len(df) >= 60 else 0.20
 
         # Risk gates
         gross_exposure = abs(position * price) / max(cash, 1.0)
+
+        # Regime detection uses EKF states, realized vol, funding, momentum, and HyperDUM distance
+        regime_status, regime_multiplier, regime_details = check_regime_status(
+            df['close'],
+            level=level,
+            velocity=velocity,
+            funding_rate=funding,
+            momentum=momentum,
+            realized_vol=recent_vol,
+            hyperdum_distance=hamming_dist
+        )
 
         print(f"Price: ${price:.2f} | EKF Level: {level:.2f} | EKF Velocity: {velocity:.4f}")
         print(f"Funding Rate: {funding:.6f} | 60d Realized Vol: {recent_vol:.2%}")
@@ -439,39 +440,70 @@ while True:
         print(f"Current Position: {position:.6f} BTC | Gross Exposure: {gross_exposure:.2%}")
 
         # ============================================
-        # TRADING DECISION (WITH REGIME FILTER)
+        # REGIME ANALYSIS (applies after HyperDUM)
+        # ============================================
+        print(f"\n{'─'*80}")
+        print(f"📊 REGIME ANALYSIS")
+        print(f"{'─'*80}")
+        print(f"Regime Status:    {regime_status}")
+        print(f"Trend:            {regime_details['trend_regime']}")
+        print(f"Volatility:       {regime_details['vol_regime']}")
+        print(f"Stability Score:  {regime_details['stability']:.2%}")
+        print(f"Trend Strength:   {regime_details['trend_strength']:.4f}")
+        print(f"Volatility Level: {regime_details['volatility']:.2%}")
+        print(f"Level Gap:        {regime_details['level_gap']:.4%}")
+        print(f"Velocity Norm:    {regime_details['velocity_norm']:.4f}")
+        print(f"Momentum (5d):    {momentum:.4f}")
+        print(f"HyperDUM Dist:    {hamming_dist:.4f}")
+        print(f"Position Mult:    {regime_multiplier:.0%}")
+
+        if regime_status == "FAVORABLE":
+            print("✅ FAVORABLE: Mean-reverting regime with high stability")
+            print("   → Strategy: Full position sizing enabled after HyperDUM passes")
+        elif regime_status == "CAUTION":
+            print("⚠️  CAUTION: Trending regime detected")
+            print("   → Strategy: Position size reduced to 50%")
+        elif regime_status == "WARNING":
+            print("🛑 WARNING: Unstable or OOD regime (stability dampened)")
+            print("   → Strategy: Trading disabled - regime unstable")
+        else:
+            print("ℹ️  NEUTRAL: Mixed conditions")
+            print("   → Strategy: Position size reduced to 75%")
+
+        # ============================================
+        # TRADING DECISION (ORDER: EKF → FEATURES → FFNN → HYPERDUM VETO → REGIME MULTIPLIER → RISK SIZING)
         # ============================================
         print(f"\n{'─'*80}")
         print(f"🎯 TRADING DECISION")
         print(f"{'─'*80}")
 
-        # REGIME GATE (NEW!): Override based on regime
-        if regime_multiplier == 0.0:
-            print(f"🚫 REGIME GATE: {regime_status} regime detected")
-            print(f"   → NO TRADE (regime filter disabled trading)")
-            target = 0.0
-        # HYPERDUM GATE: Out-of-distribution detection
-        elif hamming_dist > UNCERTAINTY_THRESHOLD:
+        base_signal = np.sign(pred)
+
+        # HYPERDUM GATE: Out-of-distribution detection (veto before regime sizing)
+        if hamming_dist > UNCERTAINTY_THRESHOLD:
             print(f"🚫 HYPERDUM GATE: Hamming distance {hamming_dist:.4f} > {UNCERTAINTY_THRESHOLD}")
             print(f"   → NO TRADE (OOD feature combination detected)")
             target = 0.0
-        # RISK GATE: Position limit
-        elif gross_exposure > MAX_GROSS_EXPOSURE:
-            print(f"🚫 RISK GATE: Gross exposure {gross_exposure:.2%} > {MAX_GROSS_EXPOSURE:.0%}")
-            print(f"   → NO TRADE (position limit exceeded)")
+        # REGIME MULTIPLIER: size modulation after HyperDUM passes
+        elif regime_multiplier == 0.0:
+            print(f"🚫 REGIME GATE: {regime_status} regime detected (multiplier 0%)")
+            print(f"   → NO TRADE (regime filter disabled trading)")
             target = 0.0
         else:
-            # SIGNAL: Mean-reversion with regime-adjusted sizing
-            risk = min(MAX_GROSS_EXPOSURE, VOL_TARGET / max(recent_vol, 0.01))
-            base_target = np.sign(pred) * risk * KELLY_FRACTION
+            # RISK SIZING: volatility target + Kelly after regime multiplier is applied
+            risk_budget = min(MAX_GROSS_EXPOSURE, VOL_TARGET / max(recent_vol, 0.01)) * KELLY_FRACTION
+            target = base_signal * regime_multiplier * risk_budget
 
-            # APPLY REGIME MULTIPLIER (NEW!)
-            target = base_target * regime_multiplier
-
-            print(f"✓ All gates passed")
-            print(f"  Base target exposure: {abs(base_target):.2%}")
-            print(f"  Regime multiplier: {regime_multiplier:.0%}")
-            print(f"  Final target exposure: {abs(target):.2%}")
+            if gross_exposure > MAX_GROSS_EXPOSURE:
+                print(f"🚫 RISK GATE: Gross exposure {gross_exposure:.2%} > {MAX_GROSS_EXPOSURE:.0%}")
+                print(f"   → NO TRADE (position limit exceeded)")
+                target = 0.0
+            else:
+                print(f"✓ All gates passed (EKF → features → FFNN → HyperDUM → regime → risk)")
+                print(f"  Base signal: {base_signal:+.0f}")
+                print(f"  Regime multiplier: {regime_multiplier:.0%}")
+                print(f"  Risk budget: {risk_budget:.2%}")
+                print(f"  Final target exposure: {abs(target):.2%}")
 
         # Calculate target position size
         target_position_value = cash * target
