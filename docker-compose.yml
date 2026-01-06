@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  trading-bot:
+    build: .
+    container_name: qprime-trader
+    restart: unless-stopped
+    environment:
+      - KRAKEN_KEY=${KRAKEN_KEY}
+      - KRAKEN_SECRET=${KRAKEN_SECRET}
+      - LIVE=${LIVE:-false}
+    volumes:
+      # Persist model files and logs
+      - ./models:/app/models
+      - ./logs:/app/logs
+    # For development/testing - override command
+    # command: python main.py --dry-run
+
+  # Optional: Run backtest instead
+  backtest:
+    build: .
+    container_name: qprime-backtest
+    profiles:
+      - backtest
+    command: python backtest_comprehensive.py
+    volumes:
+      - ./results:/app/results
+
+  # Optional: Train models
+  trainer:
+    build: .
+    container_name: qprime-trainer
+    profiles:
+      - train
+    command: python train_models.py
+    volumes:
+      - ./:/app

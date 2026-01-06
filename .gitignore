@@ -44,7 +44,9 @@ weights/
 
 # Local config / secrets
 .env
-.env.*
+.env.local
+.env.*.local
+!.env.example
 secrets.yml
 
 # OS files
