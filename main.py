@@ -391,8 +391,8 @@ while True:
         
         print(f"\n💰 EQUITY: ${equity:.2f} | PnL: {pnl_pct:+.2f}% | Position: {position:.6f} BTC")
         
-        # Sleep until next day (or shorter for testing)
-        time.sleep(86400)  # 24 hours
+        # Sleep until next check (1 hour for testing, 24 hours for production)
+        time.sleep(3600)  # 1 hour
         
     except KeyboardInterrupt:
         print("\n\n⚠ Trading stopped by user")
