@@ -20,6 +20,10 @@ from datetime import datetime, timedelta
 import warnings
 warnings.filterwarnings('ignore')
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 # Try to import data providers
 OPENBB_AVAILABLE = False
 YFINANCE_AVAILABLE = False
@@ -27,7 +31,18 @@ YFINANCE_AVAILABLE = False
 try:
     from openbb import obb
     OPENBB_AVAILABLE = True
-    print("OpenBB available")
+
+    # Authenticate with OpenBB if API key is available
+    openbb_api_key = os.environ.get("OPENBB_API_KEY", "")
+    if openbb_api_key:
+        try:
+            obb.account.login(pat=openbb_api_key)
+            print("OpenBB authenticated successfully")
+        except Exception as e:
+            print(f"OpenBB authentication failed: {e}")
+            print("Continuing without authentication (limited features)")
+    else:
+        print("OpenBB available (no API key - using free tier)")
 except ImportError:
     pass
 

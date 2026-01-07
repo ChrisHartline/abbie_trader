@@ -8,7 +8,6 @@ from config import *
 
 import numpy as np
 import pandas as pd
-import yfinance as yf
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -23,6 +22,12 @@ import os
 from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
+
+# DRY_RUN mode: simulate trades without executing on exchange
+# Set via environment variable or defaults based on LIVE setting
+DRY_RUN = os.environ.get("DRY_RUN", "true").lower() == "true"
+if not LIVE:
+    DRY_RUN = True  # Always dry run when not in live mode
 
 # -----------------------------
 # 1. Extended Kalman Filter (EKF)
@@ -113,7 +118,10 @@ def kraken_request(uri_path, data=None):
         return requests.post(url, headers=headers, data=data).json()
 
 def get_balance():
-    """Get USDT balance from Kraken"""
+    """Get USDT balance from Kraken (or simulated in DRY_RUN mode)"""
+    if DRY_RUN:
+        return INITIAL_USD  # Return simulated starting balance
+
     result = kraken_request('/0/private/Balance')
     if 'result' in result:
         # Kraken uses different currency codes
@@ -130,7 +138,13 @@ def get_current_position(pair):
     return 0.0
 
 def place_market_order(pair, side, size):
-    """Place market order on Kraken"""
+    """Place market order on Kraken (or simulate in DRY_RUN mode)"""
+    if DRY_RUN:
+        # Simulate order execution
+        fake_txid = f"DRY-{datetime.now().strftime('%Y%m%d%H%M%S')}-{side.upper()}"
+        print(f"   [DRY RUN] Simulated {side} order: {abs(size):.6f} {pair}")
+        return {'result': {'txid': [fake_txid], 'descr': {'order': f'{side} {abs(size)} {pair} @ market'}}}
+
     data = {
         'ordertype': 'market',
         'type': side,        # buy or sell
@@ -219,14 +233,18 @@ except FileNotFoundError as e:
 # 4. Live trading loop
 # -----------------------------
 print(f"\n{'='*60}")
-print(f"Q-PRIME LIVE TRADING SYSTEM")
+print(f"Q-PRIME TRADING SYSTEM")
 print(f"{'='*60}")
+print(f"Mode: {'🔴 LIVE TRADING' if LIVE and not DRY_RUN else '🟡 DRY RUN (Simulation)'}")
 print(f"Pair: {PAIR}")
 print(f"Base URL: {BASE_URL}")
 print(f"Vol Target: {VOL_TARGET}")
 print(f"Uncertainty Threshold: {UNCERTAINTY_THRESHOLD}")
 print(f"Max Gross Exposure: {MAX_GROSS_EXPOSURE:.0%}")
 print(f"Kelly Fraction: {KELLY_FRACTION:.2f}x")
+if DRY_RUN:
+    print(f"\n⚠️  DRY RUN MODE: No real trades will be executed")
+    print(f"   Set DRY_RUN=false and LIVE=true for real trading")
 print(f"{'='*60}\n")
 
 # Initialize tracking
