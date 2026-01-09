@@ -9,14 +9,22 @@ Optimized for mean-reverting assets (BTC, TSLA, NVDA):
 Generates: btc_model.pth, btc_scaler.pth, projector.npy, memory.npy
 
 Usage:
-    # Default: Download from Alpha Vantage
+    # Default: Download from Alpha Vantage (daily)
     python train_models.py
+
+    # Use HuggingFace dataset (recommended for 4hr data):
+    python train_models.py --source huggingface --timeframe 4h
 
     # Use local CSV (from Kraken):
     python train_models.py --data data/btc_4h_kraken.csv --timeframe 4h
 
     # Specify start date:
     python train_models.py --start-date 2017-01-01
+
+Data Sources:
+    - alphavantage: Daily BTC data from Alpha Vantage API (requires API key)
+    - huggingface: BTC-USDT from WinkingFace/CryptoLM-Bitcoin-BTC-USDT (4hr available)
+    - local: Your own CSV file (use --data flag)
 """
 
 import numpy as np
@@ -40,12 +48,19 @@ load_dotenv()
 # Command-line arguments
 # -----------------------------
 parser = argparse.ArgumentParser(description='Train EKF + FFNN + HyperDUM model')
-parser.add_argument('--data', type=str, help='Path to local CSV file (bypasses API download)')
+parser.add_argument('--source', type=str, default='alphavantage',
+                    choices=['alphavantage', 'huggingface', 'local'],
+                    help='Data source: alphavantage (daily), huggingface (4hr), or local CSV')
+parser.add_argument('--data', type=str, help='Path to local CSV file (use with --source local)')
 parser.add_argument('--timeframe', type=str, default='1d', choices=['1d', '4h', '1h'],
                     help='Data timeframe: 1d (daily), 4h (4-hour), 1h (hourly)')
 parser.add_argument('--start-date', type=str, default='2017-01-01',
                     help='Start date for training data (default: 2017-01-01)')
 args = parser.parse_args()
+
+# Auto-set source to local if --data is provided
+if args.data:
+    args.source = 'local'
 
 # -----------------------------
 # 1. Extended Kalman Filter (EKF)
@@ -218,11 +233,115 @@ def download_btc_alphavantage(api_key, start_date="2017-01-01"):
     print(f"✓ Downloaded {len(close)} days from Alpha Vantage")
     return close
 
+
+def load_huggingface_btc(start_date="2017-01-01", timeframe="4h"):
+    """Load BTC data from HuggingFace dataset.
+
+    Uses WinkingFace/CryptoLM-Bitcoin-BTC-USDT dataset.
+    Requires: pip install datasets huggingface_hub
+
+    Set HF_TOKEN env var for authenticated access.
+
+    Args:
+        start_date: Filter data from this date onwards
+        timeframe: Resample to this timeframe ('4h', '1h', '1d')
+
+    Returns:
+        pandas Series of close prices
+    """
+    print(f"Loading BTC data from HuggingFace (from {start_date})...")
+    print("  Dataset: WinkingFace/CryptoLM-Bitcoin-BTC-USDT")
+
+    try:
+        from datasets import load_dataset
+    except ImportError:
+        print("\nError: 'datasets' library not installed")
+        print("Run: pip install datasets huggingface_hub")
+        exit(1)
+
+    # Check for HuggingFace token
+    hf_token = os.getenv('HF_TOKEN') or os.getenv('HUGGINGFACE_TOKEN')
+    if hf_token:
+        print("  Using HuggingFace API token for authenticated access")
+        # Login with token
+        try:
+            from huggingface_hub import login
+            login(token=hf_token, add_to_git_credential=False)
+        except Exception as e:
+            print(f"  Warning: Could not login to HuggingFace: {e}")
+
+    # Load dataset
+    print("  Downloading dataset (this may take a moment)...")
+    ds = load_dataset('WinkingFace/CryptoLM-Bitcoin-BTC-USDT')
+
+    # Convert to DataFrame
+    df = ds['train'].to_pandas()
+    print(f"  Raw data: {len(df)} rows")
+
+    # Identify timestamp and close columns
+    # Common column names: timestamp/time/date, close/Close/price
+    time_col = None
+    for col in ['timestamp', 'time', 'date', 'Date', 'Timestamp']:
+        if col in df.columns:
+            time_col = col
+            break
+
+    close_col = None
+    for col in ['close', 'Close', 'price', 'Price']:
+        if col in df.columns:
+            close_col = col
+            break
+
+    if time_col is None:
+        # Try first column as timestamp
+        time_col = df.columns[0]
+        print(f"  Using first column as timestamp: {time_col}")
+
+    if close_col is None:
+        # Look for column containing 'close'
+        for col in df.columns:
+            if 'close' in col.lower():
+                close_col = col
+                break
+
+    if close_col is None:
+        raise ValueError(f"Could not find close price column. Available: {df.columns.tolist()}")
+
+    print(f"  Using columns: time='{time_col}', close='{close_col}'")
+
+    # Parse timestamps
+    df['datetime'] = pd.to_datetime(df[time_col])
+    df = df.set_index('datetime').sort_index()
+
+    # Get close prices
+    close = df[close_col].astype(float)
+
+    # Detect original timeframe and resample if needed
+    if len(close) > 1:
+        time_diff = (close.index[1] - close.index[0]).total_seconds()
+        orig_tf = "1m" if time_diff < 120 else "5m" if time_diff < 600 else "15m" if time_diff < 1800 else "1h" if time_diff < 7200 else "4h" if time_diff < 86400 else "1d"
+        print(f"  Original timeframe: ~{orig_tf}")
+
+        # Resample to target timeframe
+        resample_map = {'1h': '1H', '4h': '4H', '1d': '1D'}
+        if timeframe in resample_map:
+            close = close.resample(resample_map[timeframe]).last().dropna()
+            print(f"  Resampled to {timeframe}: {len(close)} candles")
+
+    # Filter by start date
+    close = close[close.index >= start_date]
+
+    print(f"✓ Loaded {len(close)} candles from HuggingFace")
+    print(f"  Date range: {close.index[0]} to {close.index[-1]}")
+
+    return close
+
+
 # -----------------------------
-# 3. Load Data (Local CSV or Alpha Vantage)
+# 3. Load Data (based on source)
 # -----------------------------
 
-if args.data:
+if args.source == 'local':
     # Use local CSV file (e.g., from Kraken)
     print("\n" + "="*60)
     print(f"LOADING LOCAL DATA: {args.data}")
@@ -255,8 +374,41 @@ if args.data:
         print(f"\n  Data spans {years:.1f} years")
         print(f"  ~{len(close_prices) / expected_candles_per_day:.0f} days of hourly candles")
 
+elif args.source == 'huggingface':
+    # Use HuggingFace dataset (supports 4hr data)
+    print("\n" + "="*60)
+    print("LOADING FROM HUGGINGFACE")
+    print(f"Timeframe: {TIMEFRAME}")
+    print("="*60)
+
+    try:
+        close_prices = load_huggingface_btc(START_DATE, TIMEFRAME)
+    except Exception as e:
+        print(f"\nError loading from HuggingFace: {e}")
+        print("\nTroubleshooting:")
+        print("  1. Install: pip install datasets huggingface_hub")
+        print("  2. Set HF_TOKEN in .env file (optional but recommended)")
+        print("  3. Check internet connection")
+        exit(1)
+
+    # Report data stats
+    if TIMEFRAME == "4h":
+        expected_candles_per_day = 6
+        years = (close_prices.index[-1] - close_prices.index[0]).days / 365.25
+        print(f"\n  Data spans {years:.1f} years")
+        print(f"  ~{len(close_prices) / expected_candles_per_day:.0f} days of 4hr candles")
+    elif TIMEFRAME == "1h":
+        expected_candles_per_day = 24
+        years = (close_prices.index[-1] - close_prices.index[0]).days / 365.25
+        print(f"\n  Data spans {years:.1f} years")
+        print(f"  ~{len(close_prices) / expected_candles_per_day:.0f} days of hourly candles")
+
 else:
-    # Use Alpha Vantage API (daily data only)
+    # Default: Alpha Vantage API (daily data only)
+    print("\n" + "="*60)
+    print("LOADING FROM ALPHA VANTAGE")
+    print("="*60)
+
     ALPHAVANTAGE_API_KEY = os.getenv('ALPHAVANTAGE_API_KEY')
     if not ALPHAVANTAGE_API_KEY:
         print("\n" + "="*80)
@@ -264,8 +416,8 @@ else:
         print("="*80)
         print("Add to .env file: ALPHAVANTAGE_API_KEY=your_key_here")
         print("Or get free key at: https://www.alphavantage.co/support/#api-key")
-        print("\nAlternatively, use local CSV with --data flag:")
-        print("  python train_models.py --data data/btc_4h_kraken.csv --timeframe 4h")
+        print("\nAlternatively, use HuggingFace for 4hr data:")
+        print("  python train_models.py --source huggingface --timeframe 4h")
         ALPHAVANTAGE_API_KEY = input("\nEnter your Alpha Vantage API key: ").strip()
         if not ALPHAVANTAGE_API_KEY:
             raise ValueError("API key required")
@@ -283,7 +435,7 @@ else:
     try:
         close_prices = download_btc_alphavantage(ALPHAVANTAGE_API_KEY, START_DATE)
     except Exception as e:
-        print(f"\n Error downloading data: {e}")
+        print(f"\nError downloading data: {e}")
         print("Please check your API key and internet connection")
         exit(1)
 
