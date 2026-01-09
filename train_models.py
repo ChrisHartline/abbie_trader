@@ -7,6 +7,16 @@ Optimized for mean-reverting assets (BTC, TSLA, NVDA):
 - HyperDUM: Detects regime shifts to avoid whipsaws
 
 Generates: btc_model.pth, btc_scaler.pth, projector.npy, memory.npy
+
+Usage:
+    # Default: Download from Alpha Vantage
+    python train_models.py
+
+    # Use local CSV (from Kraken):
+    python train_models.py --data data/btc_4h_kraken.csv --timeframe 4h
+
+    # Specify start date:
+    python train_models.py --start-date 2017-01-01
 """
 
 import numpy as np
@@ -19,11 +29,23 @@ from datetime import datetime
 import warnings
 import os
 import requests
+import argparse
 from dotenv import load_dotenv
 warnings.filterwarnings('ignore')
 
 # Load environment variables
 load_dotenv()
+
+# -----------------------------
+# Command-line arguments
+# -----------------------------
+parser = argparse.ArgumentParser(description='Train EKF + FFNN + HyperDUM model')
+parser.add_argument('--data', type=str, help='Path to local CSV file (bypasses API download)')
+parser.add_argument('--timeframe', type=str, default='1d', choices=['1d', '4h', '1h'],
+                    help='Data timeframe: 1d (daily), 4h (4-hour), 1h (hourly)')
+parser.add_argument('--start-date', type=str, default='2017-01-01',
+                    help='Start date for training data (default: 2017-01-01)')
+args = parser.parse_args()
 
 # -----------------------------
 # 1. Extended Kalman Filter (EKF)
@@ -73,14 +95,74 @@ def run_ekf(price_series, dt=1.0):
     return level, velocity
 
 # -----------------------------
-# 2. Download BTC data from Alpha Vantage
+# 2. Data Loading Functions
 # -----------------------------
-# UPDATED: Now using Alpha Vantage API with data from 2017
-# This includes FULL market cycles (2017 bull, 2018 bear, 2020-2021 bull, 2022 bear, 2023-2025 bull)
-# Training on both bull AND bear markets prevents regime bias
-# Previous version (2022 only) caused HyperDUM to treat bull markets as "abnormal"
+# Supports multiple data sources:
+# 1. Local CSV (from Kraken downloads) - Recommended for 4hr data
+# 2. Alpha Vantage API (daily data) - Default fallback
 
-START_DATE = "2017-01-01"  # Full cycle coverage: 2017-2025
+START_DATE = args.start_date  # From command line or default "2017-01-01"
+TIMEFRAME = args.timeframe    # From command line or default "1d"
+
+def load_local_csv(filepath, start_date="2017-01-01"):
+    """Load price data from local CSV file.
+
+    Supports Kraken CSV format (from download_kraken_data.py) or standard OHLCV CSV.
+
+    Args:
+        filepath: Path to CSV file
+        start_date: Filter data from this date onwards
+
+    Returns:
+        pandas Series of close prices
+    """
+    print(f"Loading local CSV from {filepath}...")
+
+    df = pd.read_csv(filepath)
+
+    # Handle different column formats
+    if 'timestamp' in df.columns:
+        # Kraken format: timestamp column
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True)
+    elif 'Date' in df.columns:
+        # Standard format: Date column
+        df['Date'] = pd.to_datetime(df['Date'])
+        df.set_index('Date', inplace=True)
+    elif df.columns[0] in ['Unnamed: 0']:
+        # Index in first column
+        df = df.set_index(df.columns[0])
+        df.index = pd.to_datetime(df.index)
+    else:
+        # Try to parse first column as date
+        try:
+            df.index = pd.to_datetime(df.iloc[:, 0])
+            df = df.iloc[:, 1:]
+        except:
+            # Assume index is already datetime
+            df.index = pd.to_datetime(df.index)
+
+    df = df.sort_index()
+
+    # Find close price column (case-insensitive)
+    close_col = None
+    for col in df.columns:
+        if col.lower() in ['close', 'Close', 'price']:
+            close_col = col
+            break
+
+    if close_col is None:
+        raise ValueError(f"Could not find close price column. Available: {df.columns.tolist()}")
+
+    close = df[close_col].astype(float)
+
+    # Filter by start date
+    close = close[close.index >= start_date]
+
+    print(f"  Loaded {len(close)} records from {close.index[0]} to {close.index[-1]}")
+
+    return close
+
 
 def download_btc_alphavantage(api_key, start_date="2017-01-01"):
     """Download BTC daily data from Alpha Vantage"""
@@ -136,40 +218,82 @@ def download_btc_alphavantage(api_key, start_date="2017-01-01"):
     print(f"✓ Downloaded {len(close)} days from Alpha Vantage")
     return close
 
-# Get API key
-ALPHAVANTAGE_API_KEY = os.getenv('ALPHAVANTAGE_API_KEY')
-if not ALPHAVANTAGE_API_KEY:
-    print("\n" + "="*80)
-    print("ALPHA VANTAGE API KEY REQUIRED")
-    print("="*80)
-    print("Add to .env file: ALPHAVANTAGE_API_KEY=your_key_here")
-    print("Or get free key at: https://www.alphavantage.co/support/#api-key")
-    ALPHAVANTAGE_API_KEY = input("\nEnter your Alpha Vantage API key: ").strip()
+# -----------------------------
+# 3. Load Data (Local CSV or Alpha Vantage)
+# -----------------------------
+
+if args.data:
+    # Use local CSV file (e.g., from Kraken)
+    print("\n" + "="*60)
+    print(f"LOADING LOCAL DATA: {args.data}")
+    print(f"Timeframe: {TIMEFRAME}")
+    print("="*60)
+
+    if not os.path.exists(args.data):
+        print(f"\nError: File not found: {args.data}")
+        print("\nTo get Kraken historical data:")
+        print("  1. Go to: https://support.kraken.com/hc/en-us/articles/360047124832")
+        print("  2. Download the OHLCVT ZIP file")
+        print("  3. Run: python download_kraken_data.py --csv path/to/XBTUSD_240.csv")
+        exit(1)
+
+    try:
+        close_prices = load_local_csv(args.data, START_DATE)
+    except Exception as e:
+        print(f"\nError loading CSV: {e}")
+        exit(1)
+
+    # Report data stats
+    if TIMEFRAME == "4h":
+        expected_candles_per_day = 6
+        years = (close_prices.index[-1] - close_prices.index[0]).days / 365.25
+        print(f"\n  Data spans {years:.1f} years")
+        print(f"  ~{len(close_prices) / expected_candles_per_day:.0f} days of 4hr candles")
+    elif TIMEFRAME == "1h":
+        expected_candles_per_day = 24
+        years = (close_prices.index[-1] - close_prices.index[0]).days / 365.25
+        print(f"\n  Data spans {years:.1f} years")
+        print(f"  ~{len(close_prices) / expected_candles_per_day:.0f} days of hourly candles")
+
+else:
+    # Use Alpha Vantage API (daily data only)
+    ALPHAVANTAGE_API_KEY = os.getenv('ALPHAVANTAGE_API_KEY')
     if not ALPHAVANTAGE_API_KEY:
-        raise ValueError("API key required")
+        print("\n" + "="*80)
+        print("ALPHA VANTAGE API KEY REQUIRED")
+        print("="*80)
+        print("Add to .env file: ALPHAVANTAGE_API_KEY=your_key_here")
+        print("Or get free key at: https://www.alphavantage.co/support/#api-key")
+        print("\nAlternatively, use local CSV with --data flag:")
+        print("  python train_models.py --data data/btc_4h_kraken.csv --timeframe 4h")
+        ALPHAVANTAGE_API_KEY = input("\nEnter your Alpha Vantage API key: ").strip()
+        if not ALPHAVANTAGE_API_KEY:
+            raise ValueError("API key required")
 
-print(f"\nTraining on data from {START_DATE} to present")
-print("This includes full bull/bear market cycles:")
-print("  - 2017: Bull (+1900%)")
-print("  - 2018: Bear (-84%)")
-print("  - 2020-2021: Bull (+763%)")
-print("  - 2022: Bear (-78%)")
-print("  - 2023-2025: Bull (+704%)")
-print("\nThis balanced training prevents regime bias!\n")
+    print(f"\nTraining on data from {START_DATE} to present")
+    print("This includes full bull/bear market cycles:")
+    print("  - 2017: Bull (+1900%)")
+    print("  - 2018: Bear (-84%)")
+    print("  - 2020-2021: Bull (+763%)")
+    print("  - 2022: Bear (-78%)")
+    print("  - 2023-2025: Bull (+704%)")
+    print("\nThis balanced training prevents regime bias!\n")
 
-# Download data
-try:
-    close_prices = download_btc_alphavantage(ALPHAVANTAGE_API_KEY, START_DATE)
-except Exception as e:
-    print(f"\n✗ Error downloading data: {e}")
-    print("Please check your API key and internet connection")
-    exit(1)
+    # Download data
+    try:
+        close_prices = download_btc_alphavantage(ALPHAVANTAGE_API_KEY, START_DATE)
+    except Exception as e:
+        print(f"\n Error downloading data: {e}")
+        print("Please check your API key and internet connection")
+        exit(1)
+
+    # Force daily timeframe for Alpha Vantage
+    if TIMEFRAME != "1d":
+        print(f"\nNote: Alpha Vantage only provides daily data. Switching from {TIMEFRAME} to 1d.")
+        TIMEFRAME = "1d"
 
 # Create DataFrame
 btc = pd.DataFrame({'Close': close_prices})
-
-# Using daily timeframe (Alpha Vantage provides daily data)
-TIMEFRAME = "1d"
 
 print(f"✓ Training data ready: {len(btc)} days from {btc.index[0]:%Y-%m-%d} to {btc.index[-1]:%Y-%m-%d}")
 
@@ -448,13 +572,13 @@ for i in range(len(test_pred)):
     actual_return = y_test[i]
     
     # Calculate realized volatility (adjusted for timeframe)
-    vol_lookback_periods = 360 if TIMEFRAME == "240m" else 60 if TIMEFRAME == "1d" else 1440
+    vol_lookback_periods = 360 if TIMEFRAME == "4h" else 60 if TIMEFRAME == "1d" else 1440
     lookback_start = max(0, split + window + 1 - vol_lookback_periods + i)
     lookback_end = split + window + 1 + i
-    min_periods = 30 if TIMEFRAME == "1d" else 180 if TIMEFRAME == "240m" else 720
+    min_periods = 30 if TIMEFRAME == "1d" else 180 if TIMEFRAME == "4h" else 720
     if lookback_end > lookback_start + min_periods:
         vol_window = btc['return'].iloc[lookback_start:lookback_end]
-        periods_per_year = 252 if TIMEFRAME == "1d" else 252*6 if TIMEFRAME == "240m" else 252*24
+        periods_per_year = 252 if TIMEFRAME == "1d" else 252*6 if TIMEFRAME == "4h" else 252*24
         recent_vol = vol_window.std() * np.sqrt(periods_per_year) if len(vol_window) > 0 else 0.20
     else:
         recent_vol = 0.20
@@ -506,13 +630,13 @@ for i in range(len(test_pred)):
     hamming_dist = np.mean(projected != memory_vector)
     
     # Calculate realized volatility (adjusted for timeframe)
-    vol_lookback_periods = 360 if TIMEFRAME == "240m" else 60 if TIMEFRAME == "1d" else 1440
+    vol_lookback_periods = 360 if TIMEFRAME == "4h" else 60 if TIMEFRAME == "1d" else 1440
     lookback_start = max(0, split + window + 1 - vol_lookback_periods + i)
     lookback_end = split + window + 1 + i
-    min_periods = 30 if TIMEFRAME == "1d" else 180 if TIMEFRAME == "240m" else 720
+    min_periods = 30 if TIMEFRAME == "1d" else 180 if TIMEFRAME == "4h" else 720
     if lookback_end > lookback_start + min_periods:
         vol_window = btc['return'].iloc[lookback_start:lookback_end]
-        periods_per_year = 252 if TIMEFRAME == "1d" else 252*6 if TIMEFRAME == "240m" else 252*24
+        periods_per_year = 252 if TIMEFRAME == "1d" else 252*6 if TIMEFRAME == "4h" else 252*24
         recent_vol = vol_window.std() * np.sqrt(periods_per_year) if len(vol_window) > 0 else 0.20
     else:
         recent_vol = 0.20
